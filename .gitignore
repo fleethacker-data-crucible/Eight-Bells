@@ -3,3 +3,4 @@ data/
 !samples/*.log
 *.tmp
 .DS_Store
+diagnostics/
