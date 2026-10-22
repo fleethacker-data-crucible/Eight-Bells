@@ -1,0 +1,12 @@
+name: Windows Smoke Test
+on:
+  push:
+  pull_request:
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell service and API smoke
+        shell: powershell
+        run: .\tests\Smoke-Test.ps1
