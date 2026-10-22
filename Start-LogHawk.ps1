@@ -1,13 +1,14 @@
-param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='')
+param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev)
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $testMode=($env:LOGHAWK_TEST_SESSION -eq '1' -and $NoBrowser)
-$base=if($testMode -and $env:LOGHAWK_TEST_DATA_DIR){$env:LOGHAWK_TEST_DATA_DIR}else{Join-Path $env:LOCALAPPDATA 'LogHawk'}
+$base=if($LocalDev){Join-Path $env:LOCALAPPDATA 'LogHawk-LocalDev'}elseif($testMode -and $env:LOGHAWK_TEST_DATA_DIR){$env:LOGHAWK_TEST_DATA_DIR}else{Join-Path $env:LOCALAPPDATA 'LogHawk'}
 $runtime=Join-Path $base 'runtime'
 New-Item -ItemType Directory -Force -Path $base,$runtime | Out-Null
 $ready=Join-Path $runtime 'ready.json'
 $log=Join-Path $runtime 'service.log'
 $store=Join-Path $base 'store.v2.dpapi'
+if($LocalDev){Write-Host '[LOCAL DEV] Isolated LogHawk database; do not enter operational or sensitive records.' -ForegroundColor Yellow}
 function Diag([string]$s){
   $line=[DateTime]::UtcNow.ToString('o')+' '+$s
   try{Add-Content -LiteralPath $log -Value $line -Encoding UTF8}catch{}
