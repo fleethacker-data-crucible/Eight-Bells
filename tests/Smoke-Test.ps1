@@ -13,12 +13,16 @@ try {
   $probe.Start();$port=([Net.IPEndPoint]$probe.LocalEndpoint).Port;$probe.Stop()
   $exe=Join-Path $PSHOME 'powershell.exe'
   $arguments='-NoProfile -ExecutionPolicy Bypass -File "'+$source+'" -NoBrowser -Port '+$port+' -TestSessionToken '+$token
-  $process=Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -WindowStyle Hidden
+  $stdout=Join-Path $isolated 'service-stdout.log';$stderr=Join-Path $isolated 'service-stderr.log'
+  $process=Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
   $url='http://127.0.0.1:'+$port
   $ready=$false
   for($i=0;$i -lt 60;$i++){
     Start-Sleep -Milliseconds 250
-    if($process.HasExited){throw 'Server exited during startup'}
+    if($process.HasExited){
+      $details='';foreach($file in @($stdout,$stderr,(Join-Path $isolated 'runtime/service.log'))){if(Test-Path $file){$details += "`n[$file]`n"+(Get-Content $file -Tail 50|Out-String)}}
+      throw ('Server exited during startup, exit '+$process.ExitCode+': '+$details)
+    }
     try{if((Invoke-WebRequest -UseBasicParsing -Uri "$url/health" -TimeoutSec 2).StatusCode -eq 200){$ready=$true;break}}catch{}
   }
   if(!$ready){throw 'Server did not become ready'}
