@@ -1,139 +1,222 @@
-param([int]$Port = 0, [switch]$NoBrowser, [switch]$Background)
-$ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
-if ($Background) {
-  $logDir = Join-Path $root 'diagnostics'
-  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-  $exe = Join-Path $PSHOME 'powershell.exe'
-  $arguments = '-NoProfile -STA -ExecutionPolicy Bypass -File "' + $MyInvocation.MyCommand.Path + '" -NoBrowser'
-  if ($Port -gt 0) { $arguments += ' -Port ' + $Port }
-  $child = Start-Process -FilePath $exe -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDir 'server.out.log') -RedirectStandardError (Join-Path $logDir 'server.err.log')
-  $portFile = Join-Path $logDir 'port.txt'
-  $found = $false
-  for($i=0;$i -lt 80;$i++) {
+param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics)
+$ErrorActionPreference='Stop'
+$root=Split-Path -Parent $MyInvocation.MyCommand.Path
+$base=Join-Path $env:LOCALAPPDATA 'LogHawk'
+$runtime=Join-Path $base 'runtime'
+New-Item -ItemType Directory -Force -Path $base,$runtime | Out-Null
+$ready=Join-Path $runtime 'ready.json'
+$log=Join-Path $runtime 'service.log'
+$store=Join-Path $base 'store.v2.dpapi'
+function Diag([string]$s){
+  $line=[DateTime]::UtcNow.ToString('o')+' '+$s
+  try{Add-Content -LiteralPath $log -Value $line -Encoding UTF8}catch{}
+  if($Diagnostics){Write-Host $line}
+}
+if($Background){
+  Remove-Item $ready -Force -ErrorAction SilentlyContinue
+  $args='-NoProfile -STA -ExecutionPolicy Bypass -File "'+$MyInvocation.MyCommand.Path+'"'
+  if($Port -gt 0){$args+=' -Port '+$Port}
+  $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $args -WindowStyle Hidden -PassThru
+  $ok=$false
+  for($i=0;$i -lt 80;$i++){
     Start-Sleep -Milliseconds 250
-    if ($child.HasExited) { throw "Server exited; inspect diagnostics/server.err.log" }
-    if (Test-Path $portFile) {
-      $actualPort = [int](Get-Content $portFile -Raw)
-      try {
-        $res = Invoke-WebRequest -UseBasicParsing -Uri ("http://127.0.0.1:" + $actualPort + "/api/state") -TimeoutSec 1
-        if($res.StatusCode -eq 200) { $found = $true; break }
-      } catch {}
+    if($child.HasExited){throw 'LogHawk startup failed; see '+$log}
+    if(Test-Path $ready){
+      try{
+        $r=Get-Content $ready -Raw | ConvertFrom-Json
+        if([int]$r.pid -eq $child.Id){
+          $test=Invoke-WebRequest -UseBasicParsing -Uri ('http://127.0.0.1:'+$r.port+'/health') -TimeoutSec 2
+          if($test.StatusCode -eq 200){$ok=$true;break}
+        }
+      }catch{}
     }
   }
-  if (!$found) { throw "Server did not become ready; inspect diagnostics/server.err.log" }
-  Start-Process ("http://127.0.0.1:" + $actualPort + "/")
-  Write-Host "LogHawk ready on port $actualPort, PID $($child.Id)"
+  if(!$ok){throw 'Startup timeout; inspect '+$log}
+  Write-Host ('LogHawk started on port '+$r.port)
   return
 }
-$web = Join-Path $root 'web'
-$data = Join-Path $root 'data'
-New-Item -ItemType Directory -Force -Path $data | Out-Null
-$dbPath = Join-Path $data 'records.json'
-if (!(Test-Path $dbPath)) { '{"logs":[],"lessons":[],"audit":[]}' | Set-Content -Path $dbPath -Encoding UTF8 }
-function Read-Db { return (Get-Content -LiteralPath $dbPath -Raw -Encoding UTF8 | ConvertFrom-Json) }
-function Save-Db($db) {
-  $tmp = "$dbPath.tmp"
-  $db | ConvertTo-Json -Depth 40 | Set-Content -LiteralPath $tmp -Encoding UTF8
-  Move-Item -LiteralPath $tmp -Destination $dbPath -Force
+$script:running=$true
+$script:ai=@{endpoint='';model='';key=''}
+$bytes=New-Object byte[] 32
+$rng=[Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes);$rng.Dispose()
+$script:token=[Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+function New-State{return @{version=2;logs=@();lessons=@();reviews=@();audit=@()}}
+function Load-State{
+  if(!(Test-Path $store)){return (New-State)}
+  try{
+    $raw=[IO.File]::ReadAllBytes($store)
+    $plain=[Security.Cryptography.ProtectedData]::Unprotect($raw,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+    $value=[Text.Encoding]::UTF8.GetString($plain)|ConvertFrom-Json
+    if($value.version -ne 2){throw 'Unsupported database version'}
+    return $value
+  }catch{throw 'Encrypted local database cannot be opened by this Windows account: '+$_.Exception.Message}
 }
-function Reply($ctx, [int]$status, [string]$body, [string]$mime='application/json') {
-  $bytes=[Text.Encoding]::UTF8.GetBytes($body)
-  $ctx.Response.StatusCode=$status
-  $ctx.Response.ContentType="$mime; charset=utf-8"
-  $ctx.Response.Headers.Add('Cache-Control','no-store')
-  $ctx.Response.OutputStream.Write($bytes,0,$bytes.Length)
-  $ctx.Response.Close()
+function Save-State($state){
+  $raw=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $state -Depth 70 -Compress))
+  $cipher=[Security.Cryptography.ProtectedData]::Protect($raw,$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+  $tmp=$store+'.'+[guid]::NewGuid().ToString('N')+'.tmp'
+  [IO.File]::WriteAllBytes($tmp,$cipher)
+  try{
+    if(Test-Path $store){[IO.File]::Replace($tmp,$store,$store+'.backup',$true)}
+    else{[IO.File]::Move($tmp,$store)}
+  }finally{Remove-Item $tmp -Force -ErrorAction SilentlyContinue}
 }
-function Json($obj) { return ConvertTo-Json -InputObject $obj -Depth 40 -Compress }
-function Parse-Entries([string]$content) {
-  $lines=$content -split '\r?\n'
-  $out=@()
-  $n=0
-  foreach($line in $lines) {
-    $n++
-    if ([string]::IsNullOrWhiteSpace($line)) {continue}
-    $time=$null
-    if ($line -match '\b(?<h>[01]\d|2[0-3]):(?<m>[0-5]\d)\b') { $time="$($Matches.h):$($Matches.m)" }
-    elseif ($line -match '^\s*(?<h>[01]\d|2[0-3])(?<m>[0-5]\d)\b') { $time="$($Matches.h):$($Matches.m)" }
-    $issue= $line -match '(?i)\b(fail(?:ure|ed)?|fault|alarm|abnormal|leak|vibrat\w*|outage|inoperative|casualty|discrepancy|overheat\w*)\b'
-    $resolution= $line -match '(?i)\b(restored|resolved|repaired|cleared|returned to service)\b'
-    $out+= [pscustomobject]@{line=$n;time=$time;text=$line.Trim();issue=[bool]$issue;resolution=[bool]$resolution}
+function Audit($s,[string]$action,[string]$target){
+  $s.audit=@($s.audit)+@(@{at=[DateTime]::UtcNow.ToString('o');action=$action;target=$target})
+  if(@($s.audit).Count -gt 2000){$s.audit=@($s.audit|Select-Object -Last 2000)}
+}
+function J($o){return (ConvertTo-Json -InputObject $o -Depth 70 -Compress)}
+function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){
+  $reason=switch($status){200{'OK'}201{'Created'}400{'Bad Request'}401{'Unauthorized'}403{'Forbidden'}404{'Not Found'}413{'Payload Too Large'}500{'Internal Server Error'}default{'Error'}}
+  $data=[Text.Encoding]::UTF8.GetBytes($body)
+  $nl=[string][char]13+[char]10
+  $head="HTTP/1.1 $status $reason"+$nl+"Content-Type: $mime"+$nl+"Content-Length: $($data.Length)"+$nl+"Cache-Control: no-store"+$nl+"X-Content-Type-Options: nosniff"+$nl+"X-Frame-Options: DENY"+$nl+"Referrer-Policy: no-referrer"+$nl+"Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"+$nl+"Connection: close"+$nl+$nl
+  $h=[Text.Encoding]::ASCII.GetBytes($head)
+  $stream.Write($h,0,$h.Length);$stream.Write($data,0,$data.Length);$stream.Flush()
+}
+function Reject($stream,[int]$status,[string]$msg){Reply $stream $status (J @{error=$msg})}
+function Read-Http($stream){
+  $head=New-Object 'System.Collections.Generic.List[byte]'
+  while($head.Count -lt 16384){
+    $b=$stream.ReadByte()
+    if($b -lt 0){throw 'Closed connection'}
+    $head.Add([byte]$b)
+    $c=$head.Count
+    if($c -ge 4 -and $head[$c-4] -eq 13 -and $head[$c-3] -eq 10 -and $head[$c-2] -eq 13 -and $head[$c-1] -eq 10){break}
   }
-  return ,$out
-}
-function Quality($entries) {
-  $findings=@()
-  $timed=@($entries | Where-Object { $_.time })
-  $groups=@($entries | Group-Object text | Where-Object Count -ge 3)
-  foreach($g in $groups) { $findings+=@{type='repetition';severity='review';detail="$($g.Count) identical entries: $($g.Name.Substring(0,[Math]::Min(90,$g.Name.Length)))"} }
-  $previous=-1
-  foreach($e in $timed) {
-    $parts=$e.time.Split(':');$minutes=[int]$parts[0]*60+[int]$parts[1]
-    if($previous -ge 0 -and $minutes -lt $previous) {$findings+=@{type='chronology';severity='review';detail="Timestamp moved backward at line $($e.line). Confirm date/watch boundary."}}
-    $previous=$minutes
+  if($head.Count -ge 16384){throw 'Oversized headers'}
+  $lines=[Text.Encoding]::ASCII.GetString($head.ToArray()).Split([string[]]@(([string][char]13+[char]10)),[StringSplitOptions]::None)
+  $parts=$lines[0].Split(' ')
+  if($parts.Count -ne 3){throw 'Invalid request line'}
+  $headers=@{}
+  foreach($line in $lines|Select-Object -Skip 1){
+    $n=$line.IndexOf(':')
+    if($n -gt 0){$key=$line.Substring(0,$n).Trim().ToLowerInvariant();if($headers.ContainsKey($key)){throw 'Duplicate HTTP header'};$headers[$key]=$line.Substring($n+1).Trim()}
   }
-  if ($timed.Count -eq 0) {$findings+=@{type='timestamp';severity='review';detail='No recognizable HHMM or HH:MM timestamps found.'}}
-  $issues=@($entries | Where-Object issue)
-  if($issues.Count -gt 0 -and @($entries | Where-Object resolution).Count -eq 0) {$findings+=@{type='disposition';severity='review';detail='Issue-related entries found without recognizable resolution language; verify manually.'}}
-  return ,$findings
+  if($headers.ContainsKey('transfer-encoding')){throw 'Chunked request unsupported'}
+  $len=0
+  if($headers.ContainsKey('content-length') -and ![int]::TryParse($headers['content-length'],[ref]$len)){throw 'Bad content length'}
+  if($len -lt 0 -or $len -gt 4194304){throw 'Body too large'}
+  $data=New-Object byte[] $len
+  $offset=0
+  while($offset -lt $len){$n=$stream.Read($data,$offset,$len-$offset);if($n -le 0){throw 'Truncated body'};$offset+=$n}
+  return @{method=$parts[0];path=$parts[1].Split('?')[0];headers=$headers;body=[Text.Encoding]::UTF8.GetString($data)}
 }
-$listener=[Net.HttpListener]::new()
-if($Port -eq 0) {
-  $socket=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0)
-  $socket.Start();$Port=([Net.IPEndPoint]$socket.LocalEndpoint).Port;$socket.Stop()
-}
-$prefix="http://127.0.0.1:$Port/"
-$listener.Prefixes.Add($prefix)
-$listener.Start()
-$diag = Join-Path $root 'diagnostics'
-New-Item -ItemType Directory -Force -Path $diag | Out-Null
-[IO.File]::WriteAllText((Join-Path $diag 'port.txt'),[string]$Port)
-Write-Host "LogHawk running at $prefix (Ctrl+C to stop)"
-if (!$NoBrowser) { Start-Process $prefix }
-try {
- while($listener.IsListening) {
-  $ctx=$listener.GetContext()
-  try {
-   $path=$ctx.Request.Url.AbsolutePath
-   if ($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/') {
-     Reply $ctx 200 ([IO.File]::ReadAllText((Join-Path $web 'index.html'))) 'text/html';continue
-   }
-   if ($ctx.Request.HttpMethod -eq 'GET' -and $path -eq '/api/state') {
-     Reply $ctx 200 (Json (Read-Db));continue
-   }
-   if ($ctx.Request.HttpMethod -eq 'POST' -and $path -in @('/api/import','/api/lesson')) {
-     if($ctx.Request.ContentLength64 -gt 2097152) {Reply $ctx 413 '{"error":"2MB maximum"}';continue}
-     $reader=[IO.StreamReader]::new($ctx.Request.InputStream,[Text.Encoding]::UTF8)
-     $raw=$reader.ReadToEnd();$reader.Close()
-     if($raw.Length -gt 2097152) {Reply $ctx 413 '{"error":"2MB maximum"}';continue}
-     $req=$raw | ConvertFrom-Json
-     $db=Read-Db
-     $id=[guid]::NewGuid().ToString('N')
-     $now=[DateTime]::UtcNow.ToString('o')
-     if($path -eq '/api/import') {
-       $name=[string]$req.name;$content=[string]$req.content
-       if(!$name -or !$content) {Reply $ctx 400 '{"error":"name and content required"}';continue}
-       $entries=@(Parse-Entries $content)
-       $findings=@(Quality $entries)
-       $log=[pscustomobject]@{id=$id;name=$name.Substring(0,[Math]::Min(180,$name.Length));imported=$now;content=$content;entries=$entries;findings=$findings}
-       $db.logs=@($db.logs)+@($log)
-       $db.audit=@($db.audit)+@(@{at=$now;action='import';target=$id})
-       Save-Db $db
-       Reply $ctx 200 (Json $log);continue
-     } else {
-       $title=[string]$req.title;$body=[string]$req.body
-       if(!$title -or !$body) {Reply $ctx 400 '{"error":"title and body required"}';continue}
-       $lesson=[pscustomobject]@{id=$id;title=$title;body=$body;source=[string]$req.source;status='draft';created=$now}
-       $db.lessons=@($db.lessons)+@($lesson)
-       $db.audit=@($db.audit)+@(@{at=$now;action='lesson-draft';target=$id})
-       Save-Db $db
-       Reply $ctx 200 (Json $lesson);continue
-     }
-   }
-   Reply $ctx 404 '{"error":"Not found"}'
-  } catch {
-   try {Reply $ctx 500 (Json @{error=$_.Exception.Message})} catch {}
+function Process-Http($req,$stream){
+  $path=$req.path
+  if($req.headers['host'] -ne ('127.0.0.1:'+$script:port)){Reject $stream 403 'Host rejected';return}
+  if($req.method -eq 'GET' -and $path -eq '/health'){Reply $stream 200 (J @{status='ready';version=2});return}
+  if($req.method -eq 'GET' -and $path -in @('/','/engine.js','/app.js','/styles.css')){
+    $name=switch($path){'/'{'index.html'}'/engine.js'{'engine.js'}'/app.js'{'app.js'}'/styles.css'{'styles.css'}}
+    $file=Join-Path (Join-Path $root 'web') $name
+    if(!(Test-Path $file)){Reject $stream 404 'Missing UI asset';return}
+    $mime=if($name.EndsWith('.js')){'application/javascript; charset=utf-8'}elseif($name.EndsWith('.css')){'text/css; charset=utf-8'}else{'text/html; charset=utf-8'}
+    Reply $stream 200 ([IO.File]::ReadAllText($file,[Text.Encoding]::UTF8)) $mime;return
   }
- }
-} finally { $listener.Stop();$listener.Close(); if(Test-Path (Join-Path $root 'diagnostics/port.txt')) {Remove-Item (Join-Path $root 'diagnostics/port.txt') -Force -ErrorAction SilentlyContinue} }
+  if($req.headers['x-loghawk-token'] -cne $script:token){Reject $stream 401 'Invalid session';return}
+  if($req.method -eq 'POST' -and $req.headers.ContainsKey('origin') -and $req.headers['origin'] -ne ('http://127.0.0.1:'+$script:port)){Reject $stream 403 'Origin rejected';return}
+  if($req.method -eq 'GET' -and $path -eq '/api/state'){Reply $stream 200 (J (Load-State));return}
+  if($req.method -eq 'GET' -and $path -eq '/api/diagnostics'){
+    $lines=if(Test-Path $log){@(Get-Content $log -Tail 100)}else{@()}
+    Reply $stream 200 (J @{lines=$lines;storage='Windows CurrentUser DPAPI';aiConfigured=[bool]$script:ai.endpoint});return
+  }
+  if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
+  try{$obj=$req.body|ConvertFrom-Json}catch{Reject $stream 400 'Malformed JSON';return}
+  if($path -eq '/api/import'){
+    $name=[string]$obj.name;$content=[string]$obj.content
+    if(!$name -or !$content){Reject $stream 400 'Name and content required';return}
+    if($content.Length -gt 1500000){Reject $stream 413 'Text too large';return}
+    $entries=@($obj.entries)
+    if($entries.Count -gt 10000 -or !$obj.analysis){Reject $stream 400 'Parsed entries and findings required';return}
+    $s=Load-State;$id=[guid]::NewGuid().ToString('N')
+    $item=[pscustomobject]@{id=$id;name=$name.Substring(0,[Math]::Min(150,$name.Length));format=[string]$obj.format;sourceType=[string]$obj.sourceType;watch=[string]$obj.watch;content=$content;entries=$entries;analysis=$obj.analysis;imported=[DateTime]::UtcNow.ToString('o')}
+    $s.logs=@($s.logs)+@($item);Audit $s 'import' $id;Save-State $s
+    Reply $stream 201 (J $item);return
+  }
+  if($path -eq '/api/review'){
+    $s=Load-State
+    $target=@($s.logs|Where-Object {$_.id -eq [string]$obj.logId})
+    if(!$target){Reject $stream 404 'Log not found';return}
+    $finding=@($target[0].analysis.findings|Where-Object {$_.id -eq [string]$obj.findingId})
+    if(!$finding){Reject $stream 404 'Finding not found';return}
+    if([string]$obj.disposition -notin @('acknowledged','follow-up','false-positive')){Reject $stream 400 'Invalid disposition';return}
+    if([string]::IsNullOrWhiteSpace([string]$obj.note)){Reject $stream 400 'Explanation required';return}
+    $id=[guid]::NewGuid().ToString('N')
+    $s.reviews=@($s.reviews)+@(@{id=$id;logId=[string]$obj.logId;findingId=[string]$obj.findingId;disposition=[string]$obj.disposition;note=([string]$obj.note).Substring(0,[Math]::Min(2000,([string]$obj.note).Length));at=[DateTime]::UtcNow.ToString('o')})
+    Audit $s 'quality-review' $id;Save-State $s;Reply $stream 201 (J @{id=$id});return
+  }
+  if($path -eq '/api/lesson'){
+    if([string]::IsNullOrWhiteSpace([string]$obj.title) -or [string]::IsNullOrWhiteSpace([string]$obj.body)){Reject $stream 400 'Title and body required';return}
+    $s=Load-State;$id=[guid]::NewGuid().ToString('N')
+    $lesson=[pscustomobject]@{id=$id;title=[string]$obj.title;body=[string]$obj.body;source=[string]$obj.source;status='draft';created=[DateTime]::UtcNow.ToString('o')}
+    $s.lessons=@($s.lessons)+@($lesson);Audit $s 'lesson-draft' $id;Save-State $s
+    Reply $stream 201 (J $lesson);return
+  }
+  if($path -eq '/api/lesson/review'){
+    $s=Load-State;$found=$false
+    foreach($lesson in $s.lessons){if($lesson.id -eq [string]$obj.id){$lesson.status='reviewed';$found=$true;break}}
+    if(!$found){Reject $stream 404 'Lesson not found';return}
+    Audit $s 'lesson-reviewed' ([string]$obj.id);Save-State $s;Reply $stream 200 (J @{ok=$true});return
+  }
+  if($path -eq '/api/ai/config'){
+    $endpoint=[string]$obj.endpoint
+    if(!$endpoint){$script:ai=@{endpoint='';model='';key=''};Reply $stream 200 (J @{configured=$false});return}
+    $uri=$null
+    if(![Uri]::TryCreate($endpoint,[UriKind]::Absolute,[ref]$uri)){Reject $stream 400 'Invalid endpoint';return}
+    if($uri.Scheme -ne 'https' -and !(($uri.Scheme -eq 'http') -and ($uri.Host -in @('127.0.0.1','localhost')))){Reject $stream 400 'Only HTTPS or local HTTP AI endpoints are allowed';return}
+    if($uri.UserInfo){Reject $stream 400 'Credentials in endpoint are prohibited';return}
+    $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key}
+    Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
+  }
+  if($path -eq '/api/ai/run'){
+    if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved AI endpoint';return}
+    if($obj.consent -ne $true){Reject $stream 403 'Explicit consent required';return}
+    $s=Load-State;$item=@($s.logs|Where-Object {$_.id -eq [string]$obj.logId})
+    if(!$item){Reject $stream 404 'Log not found';return}
+    $lines=@($item[0].entries|Select-Object -First 150|ForEach-Object {'Line '+$_.line+': '+$_.text})
+    $prompt="SYNTHETIC TRAINING LOG. Draft watch turnover, cite line numbers, do not invent resolutions. SOURCE:"+[Environment]::NewLine+($lines -join [Environment]::NewLine)
+    $body=J @{model=$script:ai.model;temperature=0.1;messages=@(@{role='system';content='Create a cautious evidence-linked turnover draft, plain text.'},@{role='user';content=$prompt})}
+    $headers=@{}
+    if($script:ai.key){$headers['Authorization']='Bearer '+$script:ai.key}
+    try{
+      $response=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
+      $answer=[string]$response.choices[0].message.content
+      if(!$answer){throw 'Empty response'}
+      Diag 'Manual AI request succeeded (no content logged)'
+      Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
+    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 'AI request failed; inspect endpoint and model settings';return}
+  }
+  if($path -eq '/api/shutdown'){$script:running=$false;Reply $stream 200 (J @{ok=$true});return}
+  Reject $stream 404 'Unknown route'
+}
+$server=$null
+try{
+  $server=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
+  $server.Server.ExclusiveAddressUse=$true
+  $server.Start(24)
+  $script:port=([Net.IPEndPoint]$server.LocalEndpoint).Port
+  $null=Load-State
+  if(!(Test-Path $store)){Save-State (New-State)}
+  [IO.File]::WriteAllText($ready,(J @{pid=$PID;port=$script:port}),[Text.Encoding]::UTF8)
+  Diag ('Service ready on 127.0.0.1:'+$script:port)
+  if(!$NoBrowser){
+    try{Start-Process ('http://127.0.0.1:'+$script:port+'/#token='+$script:token)}catch{Diag 'Browser auto-start failed'}
+  }
+  while($script:running){
+    $client=$server.AcceptTcpClient()
+    try{
+      $client.ReceiveTimeout=15000;$client.SendTimeout=15000
+      $stream=$client.GetStream()
+      try{$req=Read-Http $stream;Process-Http $req $stream}
+      catch{Diag ('Request error: '+$_.Exception.GetType().Name);try{Reject $stream 400 'Malformed request'}catch{}}
+    }finally{$client.Close()}
+  }
+}catch{Diag ('Fatal: '+$_.Exception.Message);throw}
+finally{
+  if($server){$server.Stop()}
+  if(Test-Path $ready){
+    try{$r=Get-Content $ready -Raw|ConvertFrom-Json;if([int]$r.pid -eq $PID){Remove-Item $ready -Force}}catch{}
+  }
+  Diag 'Service stopped'
+}
