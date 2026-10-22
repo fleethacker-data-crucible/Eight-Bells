@@ -111,13 +111,28 @@ async function chooseFile(){
  const file=el('importFile').files[0];if(!file)return;
  el('logName').value=file.name;
  if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
- el('previewWrap').classList.add('hidden');
+ el('previewWrap').classList.add('hidden');el('visionActions').classList.add('hidden');el('visionConsent').checked=false;
  const image=/^image\//.test(file.type)||/\.(png|jpg|jpeg|webp|tif|tiff)$/i.test(file.name);
  const pdf=/\.pdf$/i.test(file.name);
- if(image){previewUrl=URL.createObjectURL(file);el('imagePreview').src=previewUrl;el('previewWrap').classList.remove('hidden');el('logText').value='';notify('Image preview ready. Enter a verified transcript; no OCR is claimed.');}
+ if(image){previewUrl=URL.createObjectURL(file);el('imagePreview').src=previewUrl;el('previewWrap').classList.remove('hidden');el('visionActions').classList.remove('hidden');el('logText').value='';notify('Image preview ready. Enter a verified transcript; no OCR is claimed.');}
  else if(pdf){el('logText').value='';notify('PDF requires manual text transcription in this build.',true);}
  else{if(file.size>1500000)throw Error('File exceeds the 1.5MB text limit.');el('logText').value=await file.text();notify('Text file loaded for verification.');}
  viewPreview();
+}
+async function transcribeVision(){
+ const file=el('importFile').files[0];
+ if(!file||!file.type.startsWith('image/'))throw Error('Choose an image file first.');
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type))throw Error('For AI vision, choose PNG, JPEG, or WebP.');
+ if(file.size>2000000)throw Error('Vision image must be less than 2MB.');
+ if(!el('visionConsent').checked)throw Error('Consent is required for each image sent to a model.');
+ const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(Error('Cannot read image'));reader.readAsDataURL(file);});
+ try{
+  notify('Transcribing with approved vision model. Review every line before importing.');
+  const result=await api('/api/vision',{mime:file.type,base64:dataUrl.split(',')[1],consent:true});
+  el('logText').value=result.text;
+  el('format').value='text';viewPreview();
+  notify('Unverified AI transcription received; inspect and correct before import.');
+ }finally{el('visionConsent').checked=false;}
 }
 async function saveLesson(){
  let title=el('lessonTitle').value.trim(),body=el('lessonBody').value.trim();
@@ -147,7 +162,7 @@ async function refreshDiagnostics(){
  catch(e){el('diagOutput').textContent='Diagnostics unavailable: '+e.message;}
 }
 function safe(fn){return async()=>{try{await fn();}catch(e){notify(e.message,true);}};}
-bind('reloadBtn','click',safe(refresh));bind('importFile','change',safe(chooseFile));bind('analyzeBtn','click',safe(importLog));
+bind('reloadBtn','click',safe(refresh));bind('importFile','change',safe(chooseFile));bind('visionTranscribe','click',safe(transcribeVision));bind('analyzeBtn','click',safe(importLog));
 bind('logText','input',viewPreview);bind('format','change',viewPreview);bind('interval','change',viewPreview);
 bind('sourceSearch','input',renderSources);bind('qualityLog','change',()=>{chosenFinding=null;renderQuality();});
 bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',renderMemory);
