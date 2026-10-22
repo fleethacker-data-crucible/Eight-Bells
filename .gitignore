@@ -1,0 +1,5 @@
+data/
+*.log
+!samples/*.log
+*.tmp
+.DS_Store
