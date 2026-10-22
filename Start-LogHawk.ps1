@@ -1,5 +1,8 @@
 param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev)
 $ErrorActionPreference='Stop'
+# Windows PowerShell 5.1 does not always preload the DPAPI ProtectedData assembly.
+# This is a standard .NET Framework assembly; no install, policy change, or CAC bypass.
+Add-Type -AssemblyName System.Security -ErrorAction Stop
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 $testMode=($env:LOGHAWK_TEST_SESSION -eq '1' -and $NoBrowser)
 $base=if($LocalDev){Join-Path $env:LOCALAPPDATA 'LogHawk-LocalDev'}elseif($testMode -and $env:LOGHAWK_TEST_DATA_DIR){$env:LOGHAWK_TEST_DATA_DIR}else{Join-Path $env:LOCALAPPDATA 'LogHawk'}
