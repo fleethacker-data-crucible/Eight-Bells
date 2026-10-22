@@ -171,6 +171,29 @@ function Process-Http($req,$stream){
     $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key}
     Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
   }
+  if($path -eq '/api/vision'){
+    if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved vision-capable AI endpoint first';return}
+    if($obj.consent -ne $true){Reject $stream 403 'Explicit image transmission consent is required';return}
+    $mime=[string]$obj.mime
+    if($mime -notin @('image/png','image/jpeg','image/webp')){Reject $stream 400 'Only PNG, JPEG and WebP are supported';return}
+    $encoded=[string]$obj.base64
+    if($encoded.Length -gt 2800000 -or !$encoded){Reject $stream 413 'Image is too large for vision request';return}
+    try{$bytes=[Convert]::FromBase64String($encoded)}catch{Reject $stream 400 'Invalid image encoding';return}
+    if($bytes.Length -gt 2000000){Reject $stream 413 'Image must be under 2MB';return}
+    # The model's transcription is always unverified and must be corrected by the user.
+    $url='data:'+$mime+';base64,'+$encoded
+    $message=@{role='user';content=@(@{type='text';text='Transcribe this SYNTHETIC TRAINING watch log exactly, preserving line order and timestamps. Do not invent or normalize illegible words. Mark them [ILLEGIBLE]. Output ONLY the transcription.'},@{type='image_url';image_url=@{url=$url}})}
+    $body=J @{model=$script:ai.model;messages=@($message);temperature=0.0;max_tokens=3000}
+    $headers=@{}
+    if($script:ai.key){$headers['Authorization']='Bearer '+$script:ai.key}
+    try{
+      $result=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
+      $transcript=[string]$result.choices[0].message.content
+      if(!$transcript){throw 'No recognized transcription'}
+      Diag 'Manual synthetic-image vision transcription completed; no content logged'
+      Reply $stream 200 (J @{text=$transcript;verified=$false});return
+    }catch{Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 'Vision transcription failed; verify endpoint vision support and configuration';return}
+  }
   if($path -eq '/api/ai/run'){
     if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved AI endpoint';return}
     if($obj.consent -ne $true){Reject $stream 403 'Explicit consent required';return}
