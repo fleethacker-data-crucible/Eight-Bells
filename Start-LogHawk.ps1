@@ -219,7 +219,8 @@ $server=$null
 $instanceMutex=$null
 $instanceOwned=$false
 try{
-  $instanceMutex=New-Object System.Threading.Mutex($false,'Local\LogHawk-v2-single-instance')
+  $mutexName=if($testMode){'Local\LogHawk-v2-test-instance'}else{'Local\LogHawk-v2-single-instance'}
+  $instanceMutex=[System.Threading.Mutex]::new($false,$mutexName)
   $instanceOwned=$instanceMutex.WaitOne(0)
   if(!$instanceOwned){throw 'LogHawk is already running in this Windows session. Use the open browser tab or end that session before relaunching.'}
   $server=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
