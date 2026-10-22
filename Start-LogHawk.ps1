@@ -1,7 +1,8 @@
-param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics)
+param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='')
 $ErrorActionPreference='Stop'
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
-$base=Join-Path $env:LOCALAPPDATA 'LogHawk'
+$testMode=($env:LOGHAWK_TEST_SESSION -eq '1' -and $NoBrowser)
+$base=if($testMode -and $env:LOGHAWK_TEST_DATA_DIR){$env:LOGHAWK_TEST_DATA_DIR}else{Join-Path $env:LOCALAPPDATA 'LogHawk'}
 $runtime=Join-Path $base 'runtime'
 New-Item -ItemType Directory -Force -Path $base,$runtime | Out-Null
 $ready=Join-Path $runtime 'ready.json'
@@ -14,9 +15,9 @@ function Diag([string]$s){
 }
 if($Background){
   Remove-Item $ready -Force -ErrorAction SilentlyContinue
-  $args='-NoProfile -STA -ExecutionPolicy Bypass -File "'+$MyInvocation.MyCommand.Path+'"'
-  if($Port -gt 0){$args+=' -Port '+$Port}
-  $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $args -WindowStyle Hidden -PassThru
+  $launchArgs='-NoProfile -STA -ExecutionPolicy Bypass -File "'+$MyInvocation.MyCommand.Path+'"'
+  if($Port -gt 0){$launchArgs+=' -Port '+$Port}
+  $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $launchArgs -WindowStyle Hidden -PassThru
   $ok=$false
   for($i=0;$i -lt 80;$i++){
     Start-Sleep -Milliseconds 250
@@ -41,6 +42,7 @@ $bytes=New-Object byte[] 32
 $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes);$rng.Dispose()
 $script:token=[Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+','-').Replace('/','_')
+if($testMode -and $TestSessionToken){$script:token=$TestSessionToken;Diag 'Synthetic test token enabled for isolated non-browser smoke test'}
 function New-State{return @{version=2;logs=@();lessons=@();reviews=@();audit=@()}}
 function Load-State{
   if(!(Test-Path $store)){return (New-State)}
@@ -86,7 +88,7 @@ function Read-Http($stream){
     if($c -ge 4 -and $head[$c-4] -eq 13 -and $head[$c-3] -eq 10 -and $head[$c-2] -eq 13 -and $head[$c-1] -eq 10){break}
   }
   if($head.Count -ge 16384){throw 'Oversized headers'}
-  $lines=[Text.Encoding]::ASCII.GetString($head.ToArray()).Split([string[]]@(([string][char]13+[char]10)),[StringSplitOptions]::None)
+  $lines=([Text.Encoding]::ASCII.GetString($head.ToArray()) -split '\r\n')
   $parts=$lines[0].Split(' ')
   if($parts.Count -ne 3){throw 'Invalid request line'}
   $headers=@{}
