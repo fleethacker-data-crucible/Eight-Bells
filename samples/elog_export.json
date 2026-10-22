@@ -1,0 +1,29 @@
+{
+  "synthetic": true,
+  "system": "Fictional Training eLog",
+  "watch": "Engineering",
+  "start": "2026-10-20T08:00:00",
+  "entries": [
+    {
+      "timestamp": "2026-10-20T08:00:00",
+      "equipment": "Pump B",
+      "category": "observation",
+      "text": "Intermittent vibration observed",
+      "status": "open"
+    },
+    {
+      "timestamp": "2026-10-20T08:15:00",
+      "equipment": "Pump B",
+      "category": "notification",
+      "text": "Supervisor notified",
+      "status": "open"
+    },
+    {
+      "timestamp": "2026-10-20T10:00:00",
+      "equipment": "Pump B",
+      "category": "followup",
+      "text": "Maintenance assessment requested",
+      "status": "pending"
+    }
+  ]
+}
