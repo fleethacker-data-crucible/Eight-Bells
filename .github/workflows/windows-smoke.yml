@@ -1,12 +1,27 @@
-name: Windows Smoke Test
+name: LogHawk Windows CI
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
   smoke:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: PowerShell service and API smoke
+      - name: Check PowerShell syntax
+        shell: powershell
+        run: |
+          $files = @('Start-LogHawk.ps1','tests/Smoke-Test.ps1')
+          foreach($path in $files) {
+            $tokens = $null
+            $errors = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
+            if($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error; exit 1 }
+          }
+      - name: Test parser and quality engine
+        shell: cmd
+        run: node tests\engine.test.js
+      - name: End-to-end Windows service smoke
         shell: powershell
         run: .\tests\Smoke-Test.ps1
