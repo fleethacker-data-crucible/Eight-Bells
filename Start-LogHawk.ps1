@@ -216,7 +216,12 @@ function Process-Http($req,$stream){
   Reject $stream 404 'Unknown route'
 }
 $server=$null
+$instanceMutex=$null
+$instanceOwned=$false
 try{
+  $instanceMutex=New-Object System.Threading.Mutex($false,'Local\LogHawk-v2-single-instance')
+  $instanceOwned=$instanceMutex.WaitOne(0)
+  if(!$instanceOwned){throw 'LogHawk is already running in this Windows session. Use the open browser tab or end that session before relaunching.'}
   $server=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
   $server.Server.ExclusiveAddressUse=$true
   $server.Start(24)
@@ -240,6 +245,7 @@ try{
 }catch{Diag ('Fatal: '+$_.Exception.Message);throw}
 finally{
   if($server){$server.Stop()}
+  if($instanceMutex){if($instanceOwned){try{$instanceMutex.ReleaseMutex()}catch{}};$instanceMutex.Dispose()}
   if(Test-Path $ready){
     try{$r=Get-Content $ready -Raw|ConvertFrom-Json;if([int]$r.pid -eq $PID){Remove-Item $ready -Force}}catch{}
   }
