@@ -1,0 +1,12 @@
+SIMULATED / TRAINING ONLY — Engineering Watch
+2026-10-20 Watch 1200–1600
+1200 Assumed watch. Prior log noted Pump B vibration for follow-up.
+1215 Pump B abnormal vibration observed during local inspection.
+1230 Supervisor notified; requested maintenance assessment.
+1300 Pump B vibration remains above locally expected baseline.
+1330 Temporary observation frequency increased pending review.
+1400 Awaiting maintenance technician availability.
+1430 No new assessment entered.
+1500 Pump B condition unchanged. Discrepancy remains open.
+1530 Prepared turnover with pending equipment assessment.
+1600 Turnover completed; incoming watch advised of open discrepancy.
