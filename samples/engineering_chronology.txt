@@ -1,0 +1,8 @@
+SIMULATED / TRAINING ONLY — Chronology QA fixture
+0800 Watch assumed.
+0830 Equipment indications recorded.
+0915 Routine rounds completed.
+0900 Late entry: communications check performed; actual event time 0900.
+1000 Supervisor briefed on late entry.
+1030 Watch notes updated.
+1100 End of simulated log.
