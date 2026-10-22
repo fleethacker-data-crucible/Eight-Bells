@@ -1,6 +1,31 @@
-param([int]$Port = 0, [switch]$NoBrowser)
+param([int]$Port = 0, [switch]$NoBrowser, [switch]$Background)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ($Background) {
+  $logDir = Join-Path $root 'diagnostics'
+  New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+  $exe = Join-Path $PSHOME 'powershell.exe'
+  $arguments = '-NoProfile -STA -ExecutionPolicy Bypass -File "' + $MyInvocation.MyCommand.Path + '" -NoBrowser'
+  if ($Port -gt 0) { $arguments += ' -Port ' + $Port }
+  $child = Start-Process -FilePath $exe -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $logDir 'server.out.log') -RedirectStandardError (Join-Path $logDir 'server.err.log')
+  $portFile = Join-Path $logDir 'port.txt'
+  $found = $false
+  for($i=0;$i -lt 80;$i++) {
+    Start-Sleep -Milliseconds 250
+    if ($child.HasExited) { throw "Server exited; inspect diagnostics/server.err.log" }
+    if (Test-Path $portFile) {
+      $actualPort = [int](Get-Content $portFile -Raw)
+      try {
+        $res = Invoke-WebRequest -UseBasicParsing -Uri ("http://127.0.0.1:" + $actualPort + "/api/state") -TimeoutSec 1
+        if($res.StatusCode -eq 200) { $found = $true; break }
+      } catch {}
+    }
+  }
+  if (!$found) { throw "Server did not become ready; inspect diagnostics/server.err.log" }
+  Start-Process ("http://127.0.0.1:" + $actualPort + "/")
+  Write-Host "LogHawk ready on port $actualPort, PID $($child.Id)"
+  return
+}
 $web = Join-Path $root 'web'
 $data = Join-Path $root 'data'
 New-Item -ItemType Directory -Force -Path $data | Out-Null
@@ -61,6 +86,9 @@ if($Port -eq 0) {
 $prefix="http://127.0.0.1:$Port/"
 $listener.Prefixes.Add($prefix)
 $listener.Start()
+$diag = Join-Path $root 'diagnostics'
+New-Item -ItemType Directory -Force -Path $diag | Out-Null
+[IO.File]::WriteAllText((Join-Path $diag 'port.txt'),[string]$Port)
 Write-Host "LogHawk running at $prefix (Ctrl+C to stop)"
 if (!$NoBrowser) { Start-Process $prefix }
 try {
@@ -108,4 +136,4 @@ try {
    try {Reply $ctx 500 (Json @{error=$_.Exception.Message})} catch {}
   }
  }
-} finally { $listener.Stop();$listener.Close() }
+} finally { $listener.Stop();$listener.Close(); if(Test-Path (Join-Path $root 'diagnostics/port.txt')) {Remove-Item (Join-Path $root 'diagnostics/port.txt') -Force -ErrorAction SilentlyContinue} }
