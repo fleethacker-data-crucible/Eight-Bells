@@ -1,0 +1,9 @@
+SIMULATED / TRAINING ONLY — Damage Control Watch
+0000 Assumed watch; reviewed simulated material condition board.
+0030 Compartment inspection status updated.
+0100 Training sensor alarm observed in exercise record; supervisor notified.
+0130 Alarm cleared following simulated verification; drill controller acknowledged.
+0200 Training tag discrepancy identified on exercise board.
+0230 Tag discrepancy referred to responsible training evaluator.
+0300 No documented resolution to training tag discrepancy.
+0400 Turnover: review outstanding exercise board discrepancy.
