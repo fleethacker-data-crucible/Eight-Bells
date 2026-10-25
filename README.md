@@ -15,9 +15,17 @@ Eight Bells ingests log text and structured exports, highlights possible quality
 ## Quick start (Windows)
 
 1. Clone: `git clone https://github.com/sun-of-anton/Eight-Bells.git`
-2. Double-click **`Launch-EightBells.bat`**. This starts a hidden PowerShell 5.1 service, selects a free localhost port on the same bound socket, opens your browser with a temporary session token, and shows a startup status.
+2. Double-click **`Launch-EightBells.bat`** (the old `LogHawk.bat` name still works and forwards to it). This starts a hidden PowerShell 5.1 service, selects a free localhost port on the same bound socket, opens your browser with a temporary session token, and shows a startup status.
 3. Use **`EightBells-CLI.bat`** for an interactive terminal with diagnostics and the same GUI.
-4. Use **AI & Diagnostics → End Eight Bells session** to stop the server; closing the browser alone does not stop the background process.
+4. Closing the Eight Bells tab stops the server on its own (about 5 s after the tab closes, or 20 s after the last heartbeat). Use **End session** in the sidebar to stop it immediately.
+
+### Session lifecycle
+
+- **Tab owns the server.** The open tab sends `POST /api/heartbeat` every 5 s and a `navigator.sendBeacon` leaving signal when it closes. The server stops 20 s after the last heartbeat, or 5 s after a leaving signal with no newer heartbeat; a reload or a second tab keeps it running. A request that is still running (save, import, AI call) always finishes first.
+- **One instance.** Launching again while Eight Bells (or an older LogHawk build) runs asks *stop it and start fresh?*. `Launch-EightBells.bat --replace` answers yes; `Launch-EightBells.bat --stay` keeps the server running after the tab closes. Both options also work with `EightBells-CLI.bat` and `Launch-LocalDev.bat` (or `-Replace` / `-Stay` on `Start-EightBells.ps1`).
+- **Off switch.** Set `EIGHTBELLS_AUTO_STOP=0` in the environment to turn auto-stop off (Eight Bells has no env/config file). The former `LOGHAWK_AUTO_STOP` is still read when `EIGHTBELLS_AUTO_STOP` is not set.
+- **Stop from the shell.** `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Stop-EightBells.ps1` stops every running Eight Bells server without knowing its PID, including one started by an older LogHawk build.
+- **Runtime file.** Each server writes `%LOCALAPPDATA%\EightBells\logs\eightbells-server-<pid>.json` (pid, port, url, startedAt; never the session token) beside its existing store, and deletes it on stop. `-LocalDev` uses `%LOCALAPPDATA%\EightBells-LocalDev\logs`. The launcher and `Stop-EightBells.ps1` also look for `loghawk-server-<pid>.json` under the former `%LOCALAPPDATA%\LogHawk(-LocalDev)\logs`, so a server started by an older build can still be found and stopped. Stale files (dead pid) are removed.
 
 Process-scoped `-ExecutionPolicy Bypass` is used only to launch the script without changing machine policy. It cannot override Group Policy, AppLocker, or WDAC restrictions.
 
@@ -59,7 +67,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 ## Data boundaries
 
 - The encrypted database is in the user's local AppData directory, not the Git repository.
-- Upgrading from LogHawk: on first launch, if `%LOCALAPPDATA%\EightBells` does not exist and `%LOCALAPPDATA%\LogHawk` does, the old folder is copied forward. The original `LogHawk` folder is left untouched; delete it yourself once you have confirmed your records in Eight Bells. `EIGHTBELLS_*` environment variables are read first, with the former `LOGHAWK_*` names as a fallback.
+- Upgrading from LogHawk: on first launch, if `%LOCALAPPDATA%\EightBells` does not exist and `%LOCALAPPDATA%\LogHawk` does, the old folder is copied forward (after any running LogHawk has been stopped, and without its runtime files). The original `LogHawk` folder is left untouched; delete it yourself once you have confirmed your records in Eight Bells. `EIGHTBELLS_*` environment variables are read first, with the former `LOGHAWK_*` names as a fallback.
 - The original imported text is stored within the encrypted record; **image files themselves are not stored**. The user must review and save their transcription.
 - Exporting JSON explicitly creates an **unencrypted** file. Handle or remove exported files appropriately.
 - Old `data/records.json` from v1 is **not automatically migrated**; it remains an unencrypted legacy file and should not contain sensitive data.
@@ -80,6 +88,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Smoke-Test.ps1
 Node.js:
 ```bash
 node tests/engine.test.js
+node tests/lifecycle.test.js
 ```
 
 The GitHub Actions workflow validates PowerShell syntax, fixture parsing, and an isolated Windows end-to-end smoke flow. CI should be checked before claiming a Windows build is verified.
