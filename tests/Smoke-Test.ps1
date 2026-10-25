@@ -114,6 +114,13 @@ try {
   }
   $page=Invoke-WebRequest -UseBasicParsing -Uri "$url/" -TimeoutSec 5
   if($page.Content -notmatch 'EIGHT BELLS'){throw 'UI did not load'}
+  # Fleet UI files (docs/UNIFIED-UI.md section 10) are on the served allow-list; anything else is not.
+  foreach($asset in @(@('/vendor/fleet/fleet.css','text/css'),@('/shell.js','application/javascript'),@('/icons.js','application/javascript'),@('/assets/brand/mark.svg','image/svg+xml'))){
+    $r=Invoke-WebRequest -UseBasicParsing -Uri ($url+$asset[0]) -TimeoutSec 5
+    if($r.StatusCode -ne 200 -or ([string]$r.Headers['Content-Type']) -notlike ($asset[1]+'*')){throw ('UI asset not served: '+$asset[0])}
+  }
+  if((Invoke-WebRequest -UseBasicParsing -Uri "$url/vendor/fleet/fleet.css" -TimeoutSec 5).Content -notmatch '--fl-background'){throw 'fleet.css content is wrong'}
+  Assert-Status {Invoke-WebRequest -UseBasicParsing -Uri "$url/Start-EightBells.ps1" -TimeoutSec 5} 401 'Serving a file outside the UI allow-list'
   # Pages served by an older LogHawk build send the former header name; it must keep working.
   $legacy=Invoke-RestMethod -Uri "$url/api/state" -Headers @{'X-LogHawk-Token'=$token}
   if($null -eq $legacy.logs){throw 'Legacy X-LogHawk-Token header was rejected'}

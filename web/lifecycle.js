@@ -10,6 +10,7 @@ function newTabId(env){
 // sendBeacon cannot set headers, so that one request carries the token in its JSON body (never in the URL).
 // The server stops 20 s after the last heartbeat, or 5 s after a leaving signal; a reload sends a new
 // heartbeat inside that grace. Returns a function that stops the heartbeat (used by End session).
+// options.onStatus(ok), when given, hears whether each heartbeat reached the server (the status bar's engine state).
 function startHeartbeat(options){
  const o=options||{};
  const env=o.env||(typeof window!=='undefined'?window:{});
@@ -21,12 +22,13 @@ function startHeartbeat(options){
  const path=o.path||'/api/heartbeat';
  const tab=o.tabId||newTabId(env);
  let stopped=false;
+ const report=ok=>{if(stopped||typeof o.onStatus!=='function')return;try{o.onStatus(ok);}catch(e){/* status display only */}};
  const send=leaving=>{
   if(stopped||!doFetch)return;
   try{
    const p=doFetch(path,{method:'POST',headers:{'X-EightBells-Token':token,'Content-Type':'application/json'},body:JSON.stringify({tab,leaving:!!leaving}),cache:'no-store',keepalive:true});
-   if(p&&typeof p.catch==='function')p.catch(()=>{});
-  }catch(e){/* server already gone */}
+   if(p&&typeof p.then==='function')p.then(r=>report(!!r&&r.ok!==false),()=>report(false));
+  }catch(e){report(false);/* server already gone */}
  };
  const onHide=()=>{
   if(stopped)return;
