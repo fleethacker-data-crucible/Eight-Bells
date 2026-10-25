@@ -1,10 +1,10 @@
 param([string]$Root=(Split-Path -Parent $PSScriptRoot))
 $ErrorActionPreference='Stop'
-$source=Join-Path $Root 'Start-LogHawk.ps1'
-$isolated=Join-Path $env:TEMP ('LogHawk-test-'+[guid]::NewGuid().ToString('N'))
+$source=Join-Path $Root 'Start-EightBells.ps1'
+$isolated=Join-Path $env:TEMP ('EightBells-test-'+[guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $isolated | Out-Null
-$env:LOGHAWK_TEST_SESSION='1'
-$env:LOGHAWK_TEST_DATA_DIR=$isolated
+$env:EIGHTBELLS_TEST_SESSION='1'
+$env:EIGHTBELLS_TEST_DATA_DIR=$isolated
 $token='synthetic-smoke-test-token-123'
 $process=$null
 try {
@@ -26,7 +26,7 @@ try {
     try{if((Invoke-WebRequest -UseBasicParsing -Uri "$url/health" -TimeoutSec 2).StatusCode -eq 200){$ready=$true;break}}catch{}
   }
   if(!$ready){throw 'Server did not become ready'}
-  $headers=@{'X-LogHawk-Token'=$token;'Origin'=$url}
+  $headers=@{'X-EightBells-Token'=$token;'Origin'=$url}
   try{
     $null=Invoke-WebRequest -UseBasicParsing -Uri "$url/api/state" -TimeoutSec 5
     throw 'Unauthenticated state request was incorrectly allowed'
@@ -34,7 +34,10 @@ try {
     if(!$_.Exception.Response -or [int]$_.Exception.Response.StatusCode -ne 401){throw}
   }
   $page=Invoke-WebRequest -UseBasicParsing -Uri "$url/" -TimeoutSec 5
-  if($page.Content -notmatch 'LOGHAWK'){throw 'UI did not load'}
+  if($page.Content -notmatch 'EIGHT BELLS'){throw 'UI did not load'}
+  # Pages served by an older LogHawk build send the former header name; it must keep working.
+  $legacy=Invoke-RestMethod -Uri "$url/api/state" -Headers @{'X-LogHawk-Token'=$token}
+  if($null -eq $legacy.logs){throw 'Legacy X-LogHawk-Token header was rejected'}
   $state=Invoke-RestMethod -Uri "$url/api/state" -Headers $headers
   if($null -eq $state.logs){throw 'No logs collection'}
   $entries=@(@{line=1;time='08:00';text='Pump B abnormal vibration';equipment='Pump B';issue=$true;resolution=$false},@{line=2;time='08:30';text='Supervisor notified';issue=$false;resolution=$false})
@@ -52,7 +55,7 @@ try {
   $text=[Text.Encoding]::UTF8.GetString($cipher)
   if($text.Contains('Synthetic Engineering Test') -or $text.Contains('Synthetic test lesson')){throw 'Database is not encrypted'}
   # Confirm a forged cross-origin write is forbidden even with a valid token.
-  $forged=@{'X-LogHawk-Token'=$token;'Origin'='http://malicious.invalid'}
+  $forged=@{'X-EightBells-Token'=$token;'Origin'='http://malicious.invalid'}
   try{
     $null=Invoke-WebRequest -UseBasicParsing -Uri "$url/api/lesson" -Method Post -Headers $forged -ContentType 'application/json' -Body $lesson
     throw 'Cross-origin request was incorrectly allowed'
@@ -63,7 +66,7 @@ try {
   $null=Invoke-RestMethod -Uri "$url/api/shutdown" -Headers $headers -Method Post -ContentType 'application/json' -Body '{}'
 }finally{
  if($process -and !$process.HasExited){Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue}
- Remove-Item Env:\LOGHAWK_TEST_SESSION -ErrorAction SilentlyContinue
- Remove-Item Env:\LOGHAWK_TEST_DATA_DIR -ErrorAction SilentlyContinue
+ Remove-Item Env:\EIGHTBELLS_TEST_SESSION -ErrorAction SilentlyContinue
+ Remove-Item Env:\EIGHTBELLS_TEST_DATA_DIR -ErrorAction SilentlyContinue
  Remove-Item -LiteralPath $isolated -Recurse -Force -ErrorAction SilentlyContinue
 }
