@@ -196,15 +196,20 @@ function Read-Http($stream){
   while($offset -lt $len){$n=$stream.Read($data,$offset,$len-$offset);if($n -le 0){throw 'Truncated body'};$offset+=$n}
   return @{method=$parts[0];path=$parts[1].Split('?')[0];headers=$headers;body=[Text.Encoding]::UTF8.GetString($data)}
 }
+# The only files the UI may load: request path -> file under the repository root. Nothing else is served.
+$script:uiFiles=@{
+  '/'='web/index.html';'/engine.js'='web/engine.js';'/lifecycle.js'='web/lifecycle.js';'/app.js'='web/app.js';'/styles.css'='web/styles.css'
+  '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
+}
 function Process-Http($req,$stream){
   $path=$req.path
   if($req.headers['host'] -ne ('127.0.0.1:'+$script:port)){Reject $stream 403 'Host rejected';return}
   if($req.method -eq 'GET' -and $path -eq '/health'){Reply $stream 200 (J @{status='ready';version=2});return}
-  if($req.method -eq 'GET' -and $path -in @('/','/engine.js','/lifecycle.js','/app.js','/styles.css')){
-    $name=switch($path){'/'{'index.html'}'/engine.js'{'engine.js'}'/lifecycle.js'{'lifecycle.js'}'/app.js'{'app.js'}'/styles.css'{'styles.css'}}
-    $file=Join-Path (Join-Path $root 'web') $name
+  if($req.method -eq 'GET' -and $script:uiFiles.ContainsKey($path)){
+    $name=$script:uiFiles[$path]
+    $file=Join-Path $root $name
     if(!(Test-Path $file)){Reject $stream 404 'Missing UI asset';return}
-    $mime=if($name.EndsWith('.js')){'application/javascript; charset=utf-8'}elseif($name.EndsWith('.css')){'text/css; charset=utf-8'}else{'text/html; charset=utf-8'}
+    $mime=if($name.EndsWith('.js')){'application/javascript; charset=utf-8'}elseif($name.EndsWith('.css')){'text/css; charset=utf-8'}elseif($name.EndsWith('.svg')){'image/svg+xml; charset=utf-8'}else{'text/html; charset=utf-8'}
     Reply $stream 200 ([IO.File]::ReadAllText($file,[Text.Encoding]::UTF8)) $mime;return
   }
   if($path -eq '/api/heartbeat'){
