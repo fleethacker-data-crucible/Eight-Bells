@@ -9,7 +9,15 @@ LogHawk ingests log text and structured exports, highlights possible quality def
 1. Clone: `git clone https://github.com/ashable2/loghawk.git`
 2. Double-click **`LogHawk.bat`**. This starts a hidden PowerShell 5.1 service, selects a free localhost port on the same bound socket, opens your browser with a temporary session token, and shows a startup status.
 3. Use **`LogHawk-CLI.bat`** for an interactive terminal with diagnostics and the same GUI.
-4. Use **AI & Diagnostics → End LogHawk session** to stop the server; closing the browser alone does not stop the background process.
+4. Closing the LogHawk tab stops the server on its own (about 5 s after the tab closes, or 20 s after the last heartbeat). Use **End session** in the sidebar to stop it immediately.
+
+### Session lifecycle
+
+- **Tab owns the server.** The open tab sends `POST /api/heartbeat` every 5 s and a `navigator.sendBeacon` leaving signal when it closes. The server stops 20 s after the last heartbeat, or 5 s after a leaving signal with no newer heartbeat; a reload or a second tab keeps it running. A request that is still running (save, import, AI call) always finishes first.
+- **One instance.** Launching again while LogHawk runs asks *stop it and start fresh?*. `LogHawk.bat --replace` answers yes; `LogHawk.bat --stay` keeps the server running after the tab closes. Both options also work with `LogHawk-CLI.bat` and `Launch-LocalDev.bat` (or `-Replace` / `-Stay` on `Start-LogHawk.ps1`).
+- **Off switch.** Set `LOGHAWK_AUTO_STOP=0` in the environment to turn auto-stop off (LogHawk has no env/config file).
+- **Stop from the shell.** `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Stop-LogHawk.ps1` stops every running LogHawk server without knowing its PID.
+- **Runtime file.** Each server writes `%LOCALAPPDATA%\LogHawk\logs\loghawk-server-<pid>.json` (pid, port, url, startedAt; never the session token) beside its existing store, and deletes it on stop. `-LocalDev` uses `%LOCALAPPDATA%\LogHawk-LocalDev\logs`. Stale files (dead pid) are removed by the launcher and `Stop-LogHawk.ps1`.
 
 Process-scoped `-ExecutionPolicy Bypass` is used only to launch the script without changing machine policy. It cannot override Group Policy, AppLocker, or WDAC restrictions.
 
@@ -71,6 +79,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Smoke-Test.ps1
 Node.js:
 ```bash
 node tests/engine.test.js
+node tests/lifecycle.test.js
 ```
 
 The GitHub Actions workflow validates PowerShell syntax, fixture parsing, and an isolated Windows end-to-end smoke flow. CI should be checked before claiming a Windows build is verified.
