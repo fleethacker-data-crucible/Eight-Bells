@@ -1,6 +1,7 @@
 (function(){
 'use strict';
 const E=window.EightBellsEngine;
+const L=window.EightBellsLifecycle;
 const el=id=>document.getElementById(id);
 const escapeHTML=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const array=x=>Array.isArray(x)?x:x?[x]:[];
@@ -173,7 +174,17 @@ bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',el('tu
 bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
-bind('shutdown','click',safe(async()=>{if(!confirm('Stop this Eight Bells server session?'))return;await api('/api/shutdown',{});notify('Session stopped; close this tab.');}));
+// The open tab owns the server: it stops itself shortly after the last tab closes (see lifecycle.js).
+let stopHeartbeat=function(){};
+async function endSession(){
+ if(!confirm('End this Eight Bells session? The local server stops; reopen it with Launch-EightBells.bat.'))return;
+ stopHeartbeat();
+ try{await api('/api/shutdown',{});}
+ catch(e){stopHeartbeat=L.startHeartbeat({token});throw e;}
+ document.querySelectorAll('#endSession,#shutdown').forEach(b=>{b.disabled=true;});
+ notify('Session ended; the server has stopped. You can close this tab.');
+}
+bind('shutdown','click',safe(endSession));bind('endSession','click',safe(endSession));
 if(!token){notify('Session token missing. Launch via Launch-EightBells.bat rather than manually typing localhost.',true);}
-else refresh().catch(e=>notify('Cannot load state: '+e.message,true));
+else{stopHeartbeat=L.startHeartbeat({token});refresh().catch(e=>notify('Cannot load state: '+e.message,true));}
 })();
