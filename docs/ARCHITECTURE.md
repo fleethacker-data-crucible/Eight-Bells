@@ -1,19 +1,19 @@
-# LogHawk v2 — Implementation and Security Architecture
+# Eight Bells v2 — Implementation and Security Architecture
 
 ## Trust boundaries
 1. Browser interface loads only from `http://127.0.0.1:<ephemeral-port>`.
 2. PowerShell 5.1 opens a `TcpListener` directly bound to loopback on an OS-assigned port; it never creates a public HttpListener URL reservation.
-3. The browser receives a per-process random token in the *URL fragment*. The server requires it in `X-LogHawk-Token` on every API request. The token is **not** stored in the encrypted database. The single exception is `POST /api/heartbeat`, which also accepts the token as `session` in its JSON body because `navigator.sendBeacon` cannot set headers; it is never accepted in the query string, and request bodies are never logged. Host and Origin checks apply to that route as to every other.
+3. The browser receives a per-process random token in the *URL fragment*. The server requires it in `X-EightBells-Token` on every API request (the former `X-LogHawk-Token` is still accepted from pages served by an older build). The token is **not** stored in the encrypted database. The single exception is `POST /api/heartbeat`, which also accepts the token as `session` in its JSON body because `navigator.sendBeacon` cannot set headers; it is never accepted in the query string, and request bodies are never logged. Host and Origin checks apply to that route as to every other.
 4. State is serialized into a versioned JSON object **before** encryption with Windows DPAPI CurrentUser. Backup and replacement are atomic at the file level. This is not a shared-shipboard identity architecture.
 5. Local logs and diagnostic traces exclude source content and bearer credentials. A local user with access to the account's files can still delete records or modify the application. No system-wide tamper resistance is claimed.
-6. External AI is OFF until manually configured. Per-call consent is required. Vision images are uploaded only to the explicitly entered AI endpoint; retention by the upstream provider is outside LogHawk's control.
+6. External AI is OFF until manually configured. Per-call consent is required. Vision images are uploaded only to the explicitly entered AI endpoint; retention by the upstream provider is outside Eight Bells' control.
 
 ## Source evidence pipeline
 - `web/engine.js` (UMD, runs in browser and in Node tests): format-adapter selection; RFC-like quoted CSV parsing; JSON object/array entry mapping; timestamp recognition; source line/row mapping; elementary entity matching; deterministic QA flags; cross-watch recurrence candidates; and conservative turnover generation.
 - `web/lifecycle.js` (UMD, tested in Node): tab heartbeat every 5 s and `sendBeacon` leaving signal on `pagehide`, so the open tab owns the server.
-- `LogHawk-Process.ps1`: presence rule used by the server's auto-stop tick (20 s heartbeat timeout, 5 s leaving grace, never while a request runs, `LOGHAWK_AUTO_STOP=0` off switch), runtime files and process discovery for `Stop-LogHawk.ps1` and the launcher's one-instance check.
+- `EightBells-Process.ps1`: presence rule used by the server's auto-stop tick (20 s heartbeat timeout, 5 s leaving grace, never while a request runs, `EIGHTBELLS_AUTO_STOP=0` off switch, `LOGHAWK_AUTO_STOP` as fallback), runtime files and process discovery (including servers started by an older LogHawk build) for `Stop-EightBells.ps1` and the launcher's one-instance check.
 - `web/app.js`: UI state, authenticated API requests, preview and source verification, reviewer dispositions, turnover generation, memory search, diagnostics and opt-in AI workflow.
-- `Start-LogHawk.ps1`: loopback HTTP host, authenticated API, storage, reviews, drafts, safe AI proxy.
+- `Start-EightBells.ps1`: loopback HTTP host, authenticated API, storage, reviews, drafts, safe AI proxy.
 - `web/styles.css`: standalone responsive design system, no CDN or external JavaScript.
 
 The browser posts extracted entries and QA findings along with source text, and the server stores all values. This is appropriate for a **single-user prototype**. A production-grade implementation MUST do parsing and verification in a trusted backend and enforce schema validation before persisting results.
@@ -40,7 +40,7 @@ Use explicit stable IDs, provenance and versioning; never silently rewrite origi
 1. Replace browser-trusted parser with a signed/offline-capable .NET/PowerShell parser plus schema validation and an immutable raw document vault.
 2. Add approved offline image/PDF text and handwriting OCR with evidence bounding boxes, confidence, and correction UI. Do not claim OCR is reliable when not tested.
 3. Add SQLCipher or equivalent approved encrypted relational storage with transaction journal, safe backup and recovery, and records retention.
-4. Integrate approved Arc credential/key APIs only after verifying actual vault interfaces; no fabricated Arc module calls or insecure token scraping. Provide manual and Arc-managed modes.
+4. Integrate approved Lazarette credential/key APIs only after verifying actual vault interfaces; no fabricated Lazarette module calls or insecure token scraping. Provide manual and Lazarette-managed modes.
 5. Add local RBAC/SSO appropriate to shipboard deployment and signed review/approval workflows.
 6. Develop watch-profile rules from actual approved requirements; model timestamps, asset identities, units and expected intervals.
 7. Add supervised event correlation and semantic retrieval over reviewed lessons, with evaluation against synthetic and approved de-identified test corpora.
