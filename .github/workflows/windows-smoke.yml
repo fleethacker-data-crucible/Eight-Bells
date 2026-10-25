@@ -1,4 +1,4 @@
-name: LogHawk Windows CI
+name: Eight Bells Windows CI
 on:
   push:
   pull_request:
@@ -12,7 +12,7 @@ jobs:
       - name: Check PowerShell syntax
         shell: powershell
         run: |
-          $files = @('Start-LogHawk.ps1','tests/Smoke-Test.ps1')
+          $files = @('Start-EightBells.ps1','tests/Smoke-Test.ps1')
           foreach($path in $files) {
             $tokens = $null
             $errors = $null

@@ -1,5 +1,5 @@
-/* LogHawk deterministic document intelligence. No network/dependencies. */
-(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.LogHawkEngine=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+/* Eight Bells deterministic document intelligence. No network/dependencies. */
+(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.EightBellsEngine=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
 "use strict";
 const issue=/\b(abnormal|fault|failure|failed|alarm|leak|vibrat\w*|outage|inoperative|casualty|discrepanc\w*|overheat\w*|pending|degrad\w*|intermittent|issue|problem)\b/i;
 const negative=/\b(no new (?:discrepanc\w*|faults?|issues?|alarms?)|no (?:discrepanc\w*|faults?|issues?|alarms?) (?:observed|reported|noted)|without incident)\b/i;

@@ -4,14 +4,43 @@ $ErrorActionPreference='Stop'
 # This is a standard .NET Framework assembly; no install, policy change, or CAC bypass.
 Add-Type -AssemblyName System.Security -ErrorAction Stop
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
-$testMode=($env:LOGHAWK_TEST_SESSION -eq '1' -and $NoBrowser)
-$base=if($LocalDev){Join-Path $env:LOCALAPPDATA 'LogHawk-LocalDev'}elseif($testMode -and $env:LOGHAWK_TEST_DATA_DIR){$env:LOGHAWK_TEST_DATA_DIR}else{Join-Path $env:LOCALAPPDATA 'LogHawk'}
+# EIGHTBELLS_* environment variables are read first; the former LOGHAWK_* names remain a fallback.
+function Get-EnvSetting([string]$name){
+  $value=[Environment]::GetEnvironmentVariable('EIGHTBELLS_'+$name)
+  if([string]::IsNullOrEmpty($value)){$value=[Environment]::GetEnvironmentVariable('LOGHAWK_'+$name)}
+  return $value
+}
+# One-time copy-forward from the former LogHawk data folder. The old folder is never modified or removed.
+# Runs only when the new folder does not exist yet, so it is idempotent; a partial copy is staged and renamed.
+function Initialize-DataFolder([string]$newPath,[string]$oldPath){
+  if((Test-Path -LiteralPath $newPath) -or !(Test-Path -LiteralPath $oldPath -PathType Container)){return}
+  $stage=$newPath+'.migrating-'+[guid]::NewGuid().ToString('N')
+  try{
+    Copy-Item -LiteralPath $oldPath -Destination $stage -Recurse -Force -ErrorAction Stop
+    $staleReady=Join-Path (Join-Path $stage 'runtime') 'ready.json'
+    Remove-Item -LiteralPath $staleReady -Force -ErrorAction SilentlyContinue
+    if(!(Test-Path -LiteralPath $newPath)){[IO.Directory]::Move($stage,$newPath)}
+  }finally{
+    if(Test-Path -LiteralPath $stage){Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue}
+  }
+}
+$testMode=((Get-EnvSetting 'TEST_SESSION') -eq '1' -and $NoBrowser)
+$testDataDir=Get-EnvSetting 'TEST_DATA_DIR'
+if($LocalDev){
+  $base=Join-Path $env:LOCALAPPDATA 'EightBells-LocalDev'
+  Initialize-DataFolder $base (Join-Path $env:LOCALAPPDATA 'LogHawk-LocalDev')
+}elseif($testMode -and $testDataDir){
+  $base=$testDataDir
+}else{
+  $base=Join-Path $env:LOCALAPPDATA 'EightBells'
+  Initialize-DataFolder $base (Join-Path $env:LOCALAPPDATA 'LogHawk')
+}
 $runtime=Join-Path $base 'runtime'
 New-Item -ItemType Directory -Force -Path $base,$runtime | Out-Null
 $ready=Join-Path $runtime 'ready.json'
 $log=Join-Path $runtime 'service.log'
 $store=Join-Path $base 'store.v2.dpapi'
-if($LocalDev){Write-Host '[LOCAL DEV] Isolated LogHawk database; do not enter operational or sensitive records.' -ForegroundColor Yellow}
+if($LocalDev){Write-Host '[LOCAL DEV] Isolated Eight Bells database; do not enter operational or sensitive records.' -ForegroundColor Yellow}
 function Diag([string]$s){
   $line=[DateTime]::UtcNow.ToString('o')+' '+$s
   try{Add-Content -LiteralPath $log -Value $line -Encoding UTF8}catch{}
@@ -25,7 +54,7 @@ if($Background){
   $ok=$false
   for($i=0;$i -lt 80;$i++){
     Start-Sleep -Milliseconds 250
-    if($child.HasExited){throw 'LogHawk startup failed; see '+$log}
+    if($child.HasExited){throw 'Eight Bells startup failed; see '+$log}
     if(Test-Path $ready){
       try{
         $r=Get-Content $ready -Raw | ConvertFrom-Json
@@ -37,7 +66,7 @@ if($Background){
     }
   }
   if(!$ok){throw 'Startup timeout; inspect '+$log}
-  Write-Host ('LogHawk started on port '+$r.port)
+  Write-Host ('Eight Bells started on port '+$r.port)
   return
 }
 $script:running=$true
@@ -120,7 +149,9 @@ function Process-Http($req,$stream){
     $mime=if($name.EndsWith('.js')){'application/javascript; charset=utf-8'}elseif($name.EndsWith('.css')){'text/css; charset=utf-8'}else{'text/html; charset=utf-8'}
     Reply $stream 200 ([IO.File]::ReadAllText($file,[Text.Encoding]::UTF8)) $mime;return
   }
-  if($req.headers['x-loghawk-token'] -cne $script:token){Reject $stream 401 'Invalid session';return}
+  # X-EightBells-Token is current; X-LogHawk-Token is still accepted from pages served by an older build.
+  $sessionToken=if($req.headers.ContainsKey('x-eightbells-token')){$req.headers['x-eightbells-token']}else{$req.headers['x-loghawk-token']}
+  if($sessionToken -cne $script:token){Reject $stream 401 'Invalid session';return}
   if($req.method -eq 'POST' -and $req.headers.ContainsKey('origin') -and $req.headers['origin'] -ne ('http://127.0.0.1:'+$script:port)){Reject $stream 403 'Origin rejected';return}
   if($req.method -eq 'GET' -and $path -eq '/api/state'){Reply $stream 200 (J (Load-State));return}
   if($req.method -eq 'GET' -and $path -eq '/api/diagnostics'){
@@ -223,10 +254,11 @@ $server=$null
 $instanceMutex=$null
 $instanceOwned=$false
 try{
+  # Mutex names keep the former LogHawk ID so an old LogHawk copy and Eight Bells cannot run at the same time.
   $mutexName=if($testMode){'Local\LogHawk-v2-test-instance'}else{'Local\LogHawk-v2-single-instance'}
   $instanceMutex=[System.Threading.Mutex]::new($false,$mutexName)
   $instanceOwned=$instanceMutex.WaitOne(0)
-  if(!$instanceOwned){throw 'LogHawk is already running in this Windows session. Use the open browser tab or end that session before relaunching.'}
+  if(!$instanceOwned){throw 'Eight Bells is already running in this Windows session. Use the open browser tab or end that session before relaunching.'}
   $server=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
   $server.Server.ExclusiveAddressUse=$true
   $server.Start(24)
