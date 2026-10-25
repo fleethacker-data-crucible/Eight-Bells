@@ -1,9 +1,20 @@
-param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev)
+[CmdletBinding(PositionalBinding=$false)]
+param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev,[switch]$Stay,[switch]$Replace,[int]$LauncherPid=0,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
 $ErrorActionPreference='Stop'
+# Launcher-style options (Launch-EightBells.bat --replace / --stay) arrive as remaining arguments.
+foreach($a in @($Rest)){
+  switch -Regex ($a){
+    '^--?stay$'{$Stay=$true}
+    '^--?replace$'{$Replace=$true}
+    '^--?no-browser$'{$NoBrowser=$true}
+    default{if($a){Write-Warning ('Ignoring unknown option '+$a)}}
+  }
+}
 # Windows PowerShell 5.1 does not always preload the DPAPI ProtectedData assembly.
 # This is a standard .NET Framework assembly; no install, policy change, or CAC bypass.
 Add-Type -AssemblyName System.Security -ErrorAction Stop
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $root 'EightBells-Process.ps1')
 # EIGHTBELLS_* environment variables are read first; the former LOGHAWK_* names remain a fallback.
 function Get-EnvSetting([string]$name){
   $value=[Environment]::GetEnvironmentVariable('EIGHTBELLS_'+$name)
@@ -12,13 +23,15 @@ function Get-EnvSetting([string]$name){
 }
 # One-time copy-forward from the former LogHawk data folder. The old folder is never modified or removed.
 # Runs only when the new folder does not exist yet, so it is idempotent; a partial copy is staged and renamed.
+# Runtime files of the old build (ready.json, logs\loghawk-server-*.json) are not carried over.
 function Initialize-DataFolder([string]$newPath,[string]$oldPath){
   if((Test-Path -LiteralPath $newPath) -or !(Test-Path -LiteralPath $oldPath -PathType Container)){return}
   $stage=$newPath+'.migrating-'+[guid]::NewGuid().ToString('N')
   try{
     Copy-Item -LiteralPath $oldPath -Destination $stage -Recurse -Force -ErrorAction Stop
-    $staleReady=Join-Path (Join-Path $stage 'runtime') 'ready.json'
-    Remove-Item -LiteralPath $staleReady -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path (Join-Path $stage 'runtime') 'ready.json') -Force -ErrorAction SilentlyContinue
+    $stageLogs=Join-Path $stage 'logs'
+    if(Test-Path -LiteralPath $stageLogs){Get-ChildItem -LiteralPath $stageLogs -Filter 'loghawk-server-*.json' -ErrorAction SilentlyContinue|Remove-Item -Force -ErrorAction SilentlyContinue}
     if(!(Test-Path -LiteralPath $newPath)){[IO.Directory]::Move($stage,$newPath)}
   }finally{
     if(Test-Path -LiteralPath $stage){Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue}
@@ -26,17 +39,20 @@ function Initialize-DataFolder([string]$newPath,[string]$oldPath){
 }
 $testMode=((Get-EnvSetting 'TEST_SESSION') -eq '1' -and $NoBrowser)
 $testDataDir=Get-EnvSetting 'TEST_DATA_DIR'
+$legacyBase=$null
 if($LocalDev){
   $base=Join-Path $env:LOCALAPPDATA 'EightBells-LocalDev'
-  Initialize-DataFolder $base (Join-Path $env:LOCALAPPDATA 'LogHawk-LocalDev')
+  $legacyBase=Join-Path $env:LOCALAPPDATA 'LogHawk-LocalDev'
 }elseif($testMode -and $testDataDir){
   $base=$testDataDir
 }else{
   $base=Join-Path $env:LOCALAPPDATA 'EightBells'
-  Initialize-DataFolder $base (Join-Path $env:LOCALAPPDATA 'LogHawk')
+  $legacyBase=Join-Path $env:LOCALAPPDATA 'LogHawk'
 }
 $runtime=Join-Path $base 'runtime'
-New-Item -ItemType Directory -Force -Path $base,$runtime | Out-Null
+# Runtime files live beside the store and logs: <data dir>\logs\eightbells-server-<pid>.json
+$runtimeLogs=Join-Path $base 'logs'
+$runtimeFile=Get-EightBellsRuntimePath -DataDir $base -ProcessId $PID
 $ready=Join-Path $runtime 'ready.json'
 $log=Join-Path $runtime 'service.log'
 $store=Join-Path $base 'store.v2.dpapi'
@@ -46,10 +62,46 @@ function Diag([string]$s){
   try{Add-Content -LiteralPath $log -Value $line -Encoding UTF8}catch{}
   if($Diagnostics){Write-Host $line}
 }
+function Confirm-EightBellsReplace([string]$where){
+  if($Replace){return $true}
+  $question='Eight Bells is already running: '+$where+'. Stop it and start a fresh session?'
+  if($Background){
+    # The background launcher window is minimised, so ask with a dialog the user can see.
+    try{
+      Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+      return ([string][Windows.Forms.MessageBox]::Show($question,'Eight Bells','YesNo','Question') -eq 'Yes')
+    }catch{}
+  }
+  try{$answer=Read-Host ($question+' [Y/n]')}catch{return $false}
+  return ($answer -eq '' -or $answer -match '^[Yy]')
+}
+# One instance: find running servers (runtime files, then a process scan) and offer to replace them.
+if($testMode){
+  $null=Get-EightBellsProcesses -DataDir @($base) -NoProcessScan
+}else{
+  # A hidden child started by -Background must not count (or stop) the launcher that is waiting for it.
+  $existing=@(Get-EightBellsProcesses -Exclude @($LauncherPid))
+  if($existing.Count -gt 0){
+    $where=($existing|ForEach-Object {Format-EightBellsProcess $_}) -join ', '
+    if(Confirm-EightBellsReplace $where){
+      foreach($p in @(Stop-EightBellsProcesses -Exclude @($LauncherPid))){Write-Host ('Stopped running Eight Bells '+(Format-EightBellsProcess $p)+'.') -ForegroundColor Yellow;Diag ('Replaced running instance PID '+$p.Pid)}
+    }else{
+      Write-Host 'Leaving the running Eight Bells alone. Use its browser tab, End session, or Stop-EightBells.ps1.'
+      return
+    }
+  }
+}
+# Copy forward from the former LogHawk folder only now, after any running LogHawk was stopped above,
+# so the copy includes its last writes.
+if($legacyBase){Initialize-DataFolder $base $legacyBase}
+New-Item -ItemType Directory -Force -Path $base,$runtime,$runtimeLogs | Out-Null
 if($Background){
   Remove-Item $ready -Force -ErrorAction SilentlyContinue
-  $launchArgs='-NoProfile -STA -ExecutionPolicy Bypass -File "'+$MyInvocation.MyCommand.Path+'"'
+  # The user already answered the one-instance question here, so the hidden child must never prompt.
+  $launchArgs='-NoProfile -STA -ExecutionPolicy Bypass -File "'+$MyInvocation.MyCommand.Path+'" -Replace -LauncherPid '+$PID
   if($Port -gt 0){$launchArgs+=' -Port '+$Port}
+  if($Stay){$launchArgs+=' -Stay'}
+  if($LocalDev){$launchArgs+=' -LocalDev'}
   $child=Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $launchArgs -WindowStyle Hidden -PassThru
   $ok=$false
   for($i=0;$i -lt 80;$i++){
@@ -70,6 +122,12 @@ if($Background){
   return
 }
 $script:running=$true
+# Tab owns the server: heartbeats from open tabs keep it alive (see EightBells-Process.ps1 for the rule).
+$script:autoStop=((Test-EightBellsAutoStopEnabled) -and !$Stay)
+$script:tabs=@{}
+$script:startedAt=[DateTime]::UtcNow
+# If a browser was opened but never sent a heartbeat (closed before loading, or failed to open), stop after 2 minutes.
+$script:firstContactMs=if($NoBrowser){0}else{120000}
 $script:ai=@{endpoint='';model='';key=''}
 $bytes=New-Object byte[] 32
 $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
@@ -142,12 +200,26 @@ function Process-Http($req,$stream){
   $path=$req.path
   if($req.headers['host'] -ne ('127.0.0.1:'+$script:port)){Reject $stream 403 'Host rejected';return}
   if($req.method -eq 'GET' -and $path -eq '/health'){Reply $stream 200 (J @{status='ready';version=2});return}
-  if($req.method -eq 'GET' -and $path -in @('/','/engine.js','/app.js','/styles.css')){
-    $name=switch($path){'/'{'index.html'}'/engine.js'{'engine.js'}'/app.js'{'app.js'}'/styles.css'{'styles.css'}}
+  if($req.method -eq 'GET' -and $path -in @('/','/engine.js','/lifecycle.js','/app.js','/styles.css')){
+    $name=switch($path){'/'{'index.html'}'/engine.js'{'engine.js'}'/lifecycle.js'{'lifecycle.js'}'/app.js'{'app.js'}'/styles.css'{'styles.css'}}
     $file=Join-Path (Join-Path $root 'web') $name
     if(!(Test-Path $file)){Reject $stream 404 'Missing UI asset';return}
     $mime=if($name.EndsWith('.js')){'application/javascript; charset=utf-8'}elseif($name.EndsWith('.css')){'text/css; charset=utf-8'}else{'text/html; charset=utf-8'}
     Reply $stream 200 ([IO.File]::ReadAllText($file,[Text.Encoding]::UTF8)) $mime;return
+  }
+  if($path -eq '/api/heartbeat'){
+    if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
+    if($req.headers.ContainsKey('origin') -and $req.headers['origin'] -ne ('http://127.0.0.1:'+$script:port)){Reject $stream 403 'Origin rejected';return}
+    $beat=$null
+    try{if($req.body){$beat=$req.body|ConvertFrom-Json}}catch{$beat=$null}
+    # sendBeacon cannot set headers: on this route only, the token may travel in the JSON body (never the query string; bodies are never logged).
+    $presented=if($req.headers.ContainsKey('x-eightbells-token')){[string]$req.headers['x-eightbells-token']}else{[string]$req.headers['x-loghawk-token']}
+    if(!$presented -and $beat -and $beat.session){$presented=[string]$beat.session}
+    if($presented -cne $script:token){Reject $stream 401 'Invalid session';return}
+    $leaving=$false;$tab=''
+    if($beat){$leaving=($beat.leaving -eq $true);$tab=[string]$beat.tab}
+    Set-EightBellsPresence -Tabs $script:tabs -Tab $tab -Leaving $leaving -Now ([DateTime]::UtcNow)
+    Reply $stream 200 (J @{autoStop=$script:autoStop;timeoutSeconds=20;leavingGraceSeconds=5});return
   }
   # X-EightBells-Token is current; X-LogHawk-Token is still accepted from pages served by an older build.
   $sessionToken=if($req.headers.ContainsKey('x-eightbells-token')){$req.headers['x-eightbells-token']}else{$req.headers['x-loghawk-token']}
@@ -247,8 +319,22 @@ function Process-Http($req,$stream){
       Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
     }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 'AI request failed; inspect endpoint and model settings';return}
   }
-  if($path -eq '/api/shutdown'){$script:running=$false;Reply $stream 200 (J @{ok=$true});return}
+  if($path -eq '/api/shutdown'){$script:running=$false;Diag 'End session requested from the browser';Reply $stream 200 (J @{ok=$true});return}
   Reject $stream 404 'Unknown route'
+}
+function Invoke-PresenceTick{
+  if(!$script:autoStop -or !$script:running){return}
+  $now=[DateTime]::UtcNow
+  # Requests run one at a time inside the loop, so a save/import/AI call is never interrupted by this tick.
+  # Connections still queued (heartbeats that waited behind a long AI request) count as work in progress.
+  $busy=0
+  if($server -and $server.Pending()){$busy=1}
+  if(Test-EightBellsBrowserGone -Tabs $script:tabs -Now $now -Busy $busy -AutoStop $script:autoStop -StartedAt $script:startedAt -FirstContactMs $script:firstContactMs){
+    Diag 'No browser heartbeat; service stops itself (EIGHTBELLS_AUTO_STOP=0 or -Stay keeps it running)'
+    $script:running=$false
+  }elseif($busy -eq 0 -and $script:tabs.Count -gt 1){
+    Remove-EightBellsGoneTabs -Tabs $script:tabs -Now $now
+  }
 }
 $server=$null
 $instanceMutex=$null
@@ -257,8 +343,14 @@ try{
   # Mutex names keep the former LogHawk ID so an old LogHawk copy and Eight Bells cannot run at the same time.
   $mutexName=if($testMode){'Local\LogHawk-v2-test-instance'}else{'Local\LogHawk-v2-single-instance'}
   $instanceMutex=[System.Threading.Mutex]::new($false,$mutexName)
-  $instanceOwned=$instanceMutex.WaitOne(0)
-  if(!$instanceOwned){throw 'Eight Bells is already running in this Windows session. Use the open browser tab or end that session before relaunching.'}
+  # A server stopped with Stop-Process leaves the mutex abandoned; taking it over is expected.
+  try{$instanceOwned=$instanceMutex.WaitOne(0)}
+  catch{
+    $abandoned=($_.Exception -is [System.Threading.AbandonedMutexException]) -or ($_.Exception.InnerException -is [System.Threading.AbandonedMutexException])
+    if(!$abandoned){throw}
+    $instanceOwned=$true
+  }
+  if(!$instanceOwned){throw 'Eight Bells is already running in this Windows session. Use the open browser tab, End session, or Stop-EightBells.ps1 before relaunching.'}
   $server=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
   $server.Server.ExclusiveAddressUse=$true
   $server.Start(24)
@@ -266,22 +358,35 @@ try{
   $null=Load-State
   if(!(Test-Path $store)){Save-State (New-State)}
   [IO.File]::WriteAllText($ready,(J @{pid=$PID;port=$script:port}),[Text.Encoding]::UTF8)
+  # Runtime file for Stop-EightBells.ps1 and the launchers. Never contains the session token.
+  [IO.File]::WriteAllText($runtimeFile,(J ([ordered]@{pid=$PID;port=$script:port;url=('http://127.0.0.1:'+$script:port+'/');startedAt=$script:startedAt.ToString('o')})),[Text.Encoding]::UTF8)
   Diag ('Service ready on 127.0.0.1:'+$script:port)
+  if($script:autoStop){Diag 'Auto-stop on: the service stops 20 s after the last browser heartbeat (5 s after the tab closes)'}else{Diag 'Auto-stop off (-Stay or EIGHTBELLS_AUTO_STOP=0); use End session or Stop-EightBells.ps1'}
   if(!$NoBrowser){
     try{Start-Process ('http://127.0.0.1:'+$script:port+'/#token='+$script:token)}catch{Diag 'Browser auto-start failed'}
   }
+  $accept=$null
   while($script:running){
-    $client=$server.AcceptTcpClient()
+    # Wait for a connection at most 1 s at a time so the presence tick runs (and Ctrl+C is honoured) while idle.
+    if($null -eq $accept){$accept=$server.AcceptTcpClientAsync()}
+    if(!$accept.Wait(1000)){Invoke-PresenceTick;continue}
+    $client=$accept.Result
+    $accept=$null
     try{
       $client.ReceiveTimeout=15000;$client.SendTimeout=15000
       $stream=$client.GetStream()
+      $began=[DateTime]::UtcNow
       try{$req=Read-Http $stream;Process-Http $req $stream}
       catch{Diag ('Request error: '+$_.Exception.GetType().Name);try{Reject $stream 400 'Malformed request'}catch{}}
     }finally{$client.Close()}
+    # Heartbeats cannot be answered while a long request (AI call, large import) runs, so that time does not count against open tabs.
+    if(([DateTime]::UtcNow-$began).TotalMilliseconds -ge 2000){Step-EightBellsPresenceAfterBusy -Tabs $script:tabs -Now ([DateTime]::UtcNow)}
+    Invoke-PresenceTick
   }
 }catch{Diag ('Fatal: '+$_.Exception.Message);throw}
 finally{
   if($server){$server.Stop()}
+  Remove-Item -LiteralPath $runtimeFile -Force -ErrorAction SilentlyContinue
   if($instanceMutex){if($instanceOwned){try{$instanceMutex.ReleaseMutex()}catch{}};$instanceMutex.Dispose()}
   if(Test-Path $ready){
     try{$r=Get-Content $ready -Raw|ConvertFrom-Json;if([int]$r.pid -eq $PID){Remove-Item $ready -Force}}catch{}

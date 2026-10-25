@@ -3,13 +3,15 @@
 ## Trust boundaries
 1. Browser interface loads only from `http://127.0.0.1:<ephemeral-port>`.
 2. PowerShell 5.1 opens a `TcpListener` directly bound to loopback on an OS-assigned port; it never creates a public HttpListener URL reservation.
-3. The browser receives a per-process random token in the *URL fragment*. The server requires it in `X-EightBells-Token` on every API request. The token is **not** stored in the encrypted database.
+3. The browser receives a per-process random token in the *URL fragment*. The server requires it in `X-EightBells-Token` on every API request (the former `X-LogHawk-Token` is still accepted from pages served by an older build). The token is **not** stored in the encrypted database. The single exception is `POST /api/heartbeat`, which also accepts the token as `session` in its JSON body because `navigator.sendBeacon` cannot set headers; it is never accepted in the query string, and request bodies are never logged. Host and Origin checks apply to that route as to every other.
 4. State is serialized into a versioned JSON object **before** encryption with Windows DPAPI CurrentUser. Backup and replacement are atomic at the file level. This is not a shared-shipboard identity architecture.
 5. Local logs and diagnostic traces exclude source content and bearer credentials. A local user with access to the account's files can still delete records or modify the application. No system-wide tamper resistance is claimed.
 6. External AI is OFF until manually configured. Per-call consent is required. Vision images are uploaded only to the explicitly entered AI endpoint; retention by the upstream provider is outside Eight Bells' control.
 
 ## Source evidence pipeline
 - `web/engine.js` (UMD, runs in browser and in Node tests): format-adapter selection; RFC-like quoted CSV parsing; JSON object/array entry mapping; timestamp recognition; source line/row mapping; elementary entity matching; deterministic QA flags; cross-watch recurrence candidates; and conservative turnover generation.
+- `web/lifecycle.js` (UMD, tested in Node): tab heartbeat every 5 s and `sendBeacon` leaving signal on `pagehide`, so the open tab owns the server.
+- `EightBells-Process.ps1`: presence rule used by the server's auto-stop tick (20 s heartbeat timeout, 5 s leaving grace, never while a request runs, `EIGHTBELLS_AUTO_STOP=0` off switch, `LOGHAWK_AUTO_STOP` as fallback), runtime files and process discovery (including servers started by an older LogHawk build) for `Stop-EightBells.ps1` and the launcher's one-instance check.
 - `web/app.js`: UI state, authenticated API requests, preview and source verification, reviewer dispositions, turnover generation, memory search, diagnostics and opt-in AI workflow.
 - `Start-EightBells.ps1`: loopback HTTP host, authenticated API, storage, reviews, drafts, safe AI proxy.
 - `web/styles.css`: standalone responsive design system, no CDN or external JavaScript.
