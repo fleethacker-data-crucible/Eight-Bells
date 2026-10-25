@@ -1,5 +1,5 @@
-/* LogHawk tab lifecycle: the open tab keeps the local server alive. No network beyond the local server. */
-(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.LogHawkLifecycle=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+/* Eight Bells tab lifecycle: the open tab keeps the local server alive. No network beyond the local server. */
+(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.EightBellsLifecycle=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
 "use strict";
 function newTabId(env){
  const c=env.crypto;
@@ -24,7 +24,7 @@ function startHeartbeat(options){
  const send=leaving=>{
   if(stopped||!doFetch)return;
   try{
-   const p=doFetch(path,{method:'POST',headers:{'X-LogHawk-Token':token,'Content-Type':'application/json'},body:JSON.stringify({tab,leaving:!!leaving}),cache:'no-store',keepalive:true});
+   const p=doFetch(path,{method:'POST',headers:{'X-EightBells-Token':token,'Content-Type':'application/json'},body:JSON.stringify({tab,leaving:!!leaving}),cache:'no-store',keepalive:true});
    if(p&&typeof p.catch==='function')p.catch(()=>{});
   }catch(e){/* server already gone */}
  };

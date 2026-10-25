@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark"><title>LogHawk · Watch Intelligence</title>
+<meta name="color-scheme" content="dark"><title>Eight Bells · Watch Intelligence</title>
 <link rel="stylesheet" href="/styles.css"></head>
 <body>
 <div class="shell">
 <aside class="sidebar">
- <div class="brand"><div class="brand-icon">◈</div><div><b>LOGHAWK</b><small>WATCH INTELLIGENCE</small></div></div>
+ <div class="brand"><div class="brand-icon">◈</div><div><b>EIGHT BELLS</b><small>WATCH INTELLIGENCE</small></div></div>
  <p class="nav-caption">WORKSPACE</p>
  <nav id="nav">
   <button class="nav-btn active" data-view="overview">◫ <span>Command Center</span></button>
@@ -14,7 +14,7 @@
   <button class="nav-btn" data-view="turnover">⇄ <span>Watch Turnover</span></button>
   <button class="nav-btn" data-view="memory">◎ <span>Operational Memory</span></button>
   <button class="nav-btn" data-view="settings">⚙ <span>AI & Diagnostics</span></button>
-  <button class="nav-btn end-session" id="endSession" type="button" title="Stop the local LogHawk server">⏻ <span>End session</span></button>
+  <button class="nav-btn end-session" id="endSession" type="button" title="Stop the local Eight Bells server">⏻ <span>End session</span></button>
  </nav>
  <div class="side-footer"><span class="live">●</span> Local-first workspace<div class="mini">Windows DPAPI · User scoped</div><div class="mini">Training data only · v2</div></div>
 </aside>
@@ -31,7 +31,7 @@
     <div class="twocol unequal"><article class="panel"><h3>1 · Select source</h3><label for="importFile">Source file</label><input id="importFile" type="file" accept=".txt,.log,.md,.csv,.json,.png,.jpg,.jpeg,.webp,.tiff,.tif,.pdf">
     <p class="hint">TXT, LOG, Markdown, CSV and JSON are parsed directly. Image and PDF files need a verified transcript in this build; the PDF itself is not read.</p>
     <div id="previewWrap" class="preview hidden"><img id="imagePreview" alt="Selected log source preview"><p class="hint">Use the image as a transcription reference; the image itself is not stored in this version.</p></div>
-    <div id="visionActions" class="hidden"><label class="check"><input type="checkbox" id="visionConsent"> I authorize sending this synthetic image to the configured, approved vision model for transcription.</label><button class="outline full" id="visionTranscribe">Transcribe image with AI vision</button><p class="hint">The transcript requires manual review. No image is retained by LogHawk, but the AI provider may process submitted content under its own policies.</p></div>
+    <div id="visionActions" class="hidden"><label class="check"><input type="checkbox" id="visionConsent"> I authorize sending this synthetic image to the configured, approved vision model for transcription.</label><button class="outline full" id="visionTranscribe">Transcribe image with AI vision</button><p class="hint">The transcript requires manual review. No image is retained by Eight Bells, but the AI provider may process submitted content under its own policies.</p></div>
     <label for="logName">Log title</label><input id="logName" placeholder="Auxiliary Engineering / 0800–1200">
     <label for="watchType">Watch profile</label><select id="watchType"><option>Engineering</option><option>Bridge / Quarterdeck</option><option>Damage Control</option><option>Security</option><option>Communications</option><option>Other</option></select>
     <label for="format">Parser</label><select id="format"><option value="auto">Detect automatically</option><option value="text">Plain text / transcript</option><option value="csv">CSV table</option><option value="json">JSON export</option></select>
@@ -55,10 +55,10 @@
     <article class="panel"><h3>Lesson library</h3><div id="lessonList" class="stack"></div></article>
   </section>
   <section id="settings" class="view"><div class="section-header"><div><h2>AI & Diagnostics</h2><p>Manage optional approved AI and inspect local application health.</p></div></div>
-    <div class="twocol"><article class="panel"><h3>AI provider · Manual</h3><p class="hint">Arc credential integration is not connected yet. Credentials entered here are held in server memory only for this session, not persisted.</p><label for="endpoint">OpenAI-compatible chat completions URL</label><input id="endpoint" placeholder="https://approved.example/v1/chat/completions"><label for="model">Model ID</label><input id="model" placeholder="approved-model"><label for="aiKey">API key (optional, session only)</label><input id="aiKey" type="password" autocomplete="off"><button id="aiConfig" class="accent full">Configure session provider</button><button id="aiClear" class="outline full">Clear provider credentials</button></article>
-    <article class="panel"><h3>Diagnostics console</h3><button id="diagRefresh" class="outline">Refresh diagnostics</button><pre id="diagOutput" class="report">No diagnostics loaded.</pre><p class="hint">Diagnostics exclude log content and API credentials; troubleshoot without exposing operational records.</p><button id="shutdown" class="danger">End LogHawk session</button></article></div>
+    <div class="twocol"><article class="panel"><h3>AI provider · Manual</h3><p class="hint">Lazarette credential integration is not connected yet. Credentials entered here are held in server memory only for this session, not persisted.</p><label for="endpoint">OpenAI-compatible chat completions URL</label><input id="endpoint" placeholder="https://approved.example/v1/chat/completions"><label for="model">Model ID</label><input id="model" placeholder="approved-model"><label for="aiKey">API key (optional, session only)</label><input id="aiKey" type="password" autocomplete="off"><button id="aiConfig" class="accent full">Configure session provider</button><button id="aiClear" class="outline full">Clear provider credentials</button></article>
+    <article class="panel"><h3>Diagnostics console</h3><button id="diagRefresh" class="outline">Refresh diagnostics</button><pre id="diagOutput" class="report">No diagnostics loaded.</pre><p class="hint">Diagnostics exclude log content and API credentials; troubleshoot without exposing operational records.</p><button id="shutdown" class="danger">End Eight Bells session</button></article></div>
   </section>
- </main><footer>LOGHAWK / LOCAL-FIRST INTELLIGENCE · Evidence is not proof · Training prototype, not an official watch log</footer>
+ </main><footer>EIGHT BELLS / LOCAL-FIRST INTELLIGENCE · Evidence is not proof · Training prototype, not an official watch log</footer>
 </div></div>
 <script src="/engine.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
 </body></html>
