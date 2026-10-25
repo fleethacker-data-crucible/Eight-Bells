@@ -1,4 +1,4 @@
-# Synthetic LogHawk ingestion fixtures
+# Synthetic Eight Bells ingestion fixtures
 ALL CONTENT IS FICTIONAL. No real ship, personnel, equipment identifiers, operating parameters, or events. Not official Navy forms or procedures.
 
 ## Ready for current text importer

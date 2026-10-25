@@ -1,5 +1,3 @@
 @echo off
-rem Options: --replace, --stay (see LogHawk.bat)
-cd /d "%~dp0"
-powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0Start-LogHawk.ps1" -Diagnostics %*
-pause
+rem Former LogHawk CLI launcher name, kept so existing shortcuts keep working. Use EightBells-CLI.bat.
+call "%~dp0EightBells-CLI.bat" %*

@@ -1,7 +1,7 @@
 (function(){
 'use strict';
-const E=window.LogHawkEngine;
-const L=window.LogHawkLifecycle;
+const E=window.EightBellsEngine;
+const L=window.EightBellsLifecycle;
 const el=id=>document.getElementById(id);
 const escapeHTML=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const array=x=>Array.isArray(x)?x:x?[x]:[];
@@ -9,8 +9,8 @@ let token=(location.hash.match(/(?:^#|&)token=([^&]+)/)||[])[1]||'';
 let state={logs:[],lessons:[],reviews:[],audit:[]},chosenFinding=null,chosenLog=null,previewUrl=null;
 function notify(message,error){el('notice').textContent=message;el('notice').style.color=error?'#ffb7a7':'#83dcbc';}
 async function api(path,data){
- if(!token)throw Error('No launch session token. Start LogHawk with LogHawk.bat.');
- const res=await fetch(path,{method:data===undefined?'GET':'POST',headers:{'X-LogHawk-Token':token,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),cache:'no-store'});
+ if(!token)throw Error('No launch session token. Start Eight Bells with Launch-EightBells.bat.');
+ const res=await fetch(path,{method:data===undefined?'GET':'POST',headers:{'X-EightBells-Token':token,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),cache:'no-store'});
  const payload=await res.json();
  if(!res.ok)throw Error(payload.error||'Request failed ('+res.status+')');
  return payload;
@@ -170,14 +170,14 @@ bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',render
 bind('lessonSave','click',safe(saveLesson));
 bind('generateTurn','click',safe(generateTurn));
 bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(el('turnText').textContent);notify('Turnover copied to clipboard.');}));
-bind('saveTurn','click',safe(async()=>{download('LogHawk-turnover.txt',el('turnText').textContent,'text/plain');}));
-bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('LogHawk-export.json',JSON.stringify(state,null,2),'application/json');}));
+bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',el('turnText').textContent,'text/plain');}));
+bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
 // The open tab owns the server: it stops itself shortly after the last tab closes (see lifecycle.js).
 let stopHeartbeat=function(){};
 async function endSession(){
- if(!confirm('End this LogHawk session? The local server stops; reopen it with LogHawk.bat.'))return;
+ if(!confirm('End this Eight Bells session? The local server stops; reopen it with Launch-EightBells.bat.'))return;
  stopHeartbeat();
  try{await api('/api/shutdown',{});}
  catch(e){stopHeartbeat=L.startHeartbeat({token});throw e;}
@@ -185,6 +185,6 @@ async function endSession(){
  notify('Session ended; the server has stopped. You can close this tab.');
 }
 bind('shutdown','click',safe(endSession));bind('endSession','click',safe(endSession));
-if(!token){notify('Session token missing. Launch via LogHawk.bat rather than manually typing localhost.',true);}
+if(!token){notify('Session token missing. Launch via Launch-EightBells.bat rather than manually typing localhost.',true);}
 else{stopHeartbeat=L.startHeartbeat({token});refresh().catch(e=>notify('Cannot load state: '+e.message,true));}
 })();
