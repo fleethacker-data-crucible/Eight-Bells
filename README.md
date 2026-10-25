@@ -1,4 +1,9 @@
-<p align="center"><img src="assets/brand/emblem-light.png" width="280" alt="Eight Bells"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/emblem-dark.png">
+    <img src="assets/brand/emblem-light.png" width="280" alt="Eight Bells emblem: a ship's bell and an hourglass, inside a brass compass ring">
+  </picture>
+</p>
 
 # Eight Bells
 
