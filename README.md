@@ -17,6 +17,12 @@ Eight bells is rung at the change of the watch. Eight Bells supports watch relie
 
 Eight Bells ingests log text and structured exports, highlights possible quality deficiencies, drafts watch turnover, preserves event histories, and supports evidence-linked lessons learned.
 
+| Night watch (dark) | Chart room (light) |
+| --- | --- |
+| ![Eight Bells Command Center in the Night watch theme](docs/screenshots/command-center-night-watch.png) | ![Eight Bells Command Center in the Chart room theme](docs/screenshots/command-center-chart-room.png) |
+
+Eight Bells follows the Windows light/dark setting by default; the theme button in the sidebar switches between Follow Windows, Night watch and Chart room. The screenshots show only the synthetic fixtures in [samples](samples/README.md), captured by `docs/screenshots/capture-landing.js` against an isolated test server.
+
 ## Quick start (Windows)
 
 1. Clone: `git clone https://github.com/sun-of-anton/Eight-Bells.git`

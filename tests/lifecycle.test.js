@@ -70,5 +70,16 @@ const blobText=async data=>typeof data==='string'?data:await data.text();
  const a=fakeEnv(),b=fakeEnv();a.env.crypto=b.env.crypto=undefined;
  lifecycle.startHeartbeat({env:a.env,token:'t'});lifecycle.startHeartbeat({env:b.env,token:'t'});
  assert.notStrictEqual(a.calls[0].body.tab,b.calls[0].body.tab);
- console.log('PASS: 8 tab lifecycle tests (heartbeat, beacon, fallback, pageshow, stop, tab ids)');
+ // onStatus reports whether each heartbeat reached the server (status bar engine state), and never after stop.
+ const seen=[];let mode='ok';f=fakeEnv();
+ f.env.fetch=()=>{if(mode==='throw')throw Error('offline');return mode==='ok'?Promise.resolve({ok:true}):Promise.reject(Error('offline'));};
+ const stopStatus=lifecycle.startHeartbeat({env:f.env,token:'tok',onStatus:ok=>seen.push(ok)});
+ await Promise.resolve();await Promise.resolve();
+ assert.deepStrictEqual(seen,[true]);
+ mode='reject';f.timer().fn();await Promise.resolve();await Promise.resolve();
+ assert.deepStrictEqual(seen,[true,false]);
+ mode='throw';f.timer().fn();
+ assert.deepStrictEqual(seen,[true,false,false]);
+ stopStatus();
+ console.log('PASS: 9 tab lifecycle tests (heartbeat, beacon, fallback, pageshow, stop, tab ids)');
 })().catch(e=>{console.error(e);process.exit(1);});
