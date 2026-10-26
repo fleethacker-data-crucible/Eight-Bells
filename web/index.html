@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="en" data-app="eight-bells"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark light"><title>Eight Bells · Watch Intelligence</title>
-<link rel="icon" href="/assets/brand/mark.svg" type="image/svg+xml">
+<link rel="icon" href="/brand/favicon.ico" sizes="16x16 32x32 48x48 256x256"><link rel="icon" type="image/png" sizes="256x256" href="/brand/icon-256.png">
 <link rel="stylesheet" href="/vendor/fleet/fleet.css">
 <link rel="stylesheet" href="/styles.css">
 <script src="/icons.js"></script><script src="/shell.js"></script></head>
 <body>
 <div class="shell">
 <aside class="sidebar" aria-label="Eight Bells">
- <div class="brand" title="Eight Bells · Watch Intelligence"><img class="brand-mark" src="/assets/brand/mark.svg" alt="" width="40" height="40"><div class="wordmark"><b class="wordmark-name">EIGHT BELLS</b><span class="wordmark-rule" aria-hidden="true"><span></span><svg viewBox="0 0 16 16" width="10" height="10"><path d="M8 0 9.6 6.4 16 8 9.6 9.6 8 16 6.4 9.6 0 8 6.4 6.4Z"/></svg><span></span></span></div></div>
+ <div class="brand" title="Eight Bells · Watch Intelligence"><img class="brand-emblem only-dark" src="/brand/emblem-dark.png" alt="Eight Bells" width="184" height="184"><img class="brand-emblem only-light" src="/brand/emblem-light.png" alt="Eight Bells" width="184" height="184"><img class="brand-icon" src="/brand/icon-256.png" alt="Eight Bells" width="40" height="40"></div>
  <p class="nav-caption">WORKSPACE</p>
  <nav id="nav" class="fl-nav sidebar-nav" aria-label="Workspace">
   <button class="nav-btn active" data-view="overview" type="button" title="Command Center" aria-current="page"><span class="nav-icon" data-icon="overview" data-size="20"></span><span class="nav-label">Command Center</span></button>
@@ -30,6 +30,7 @@
  <div class="alert-banner" role="note"><span class="alert-icon" data-icon="warning"></span><p><b>NON-OPERATIONAL TRAINING BUILD</b> — Not accredited for Navy operational records, CUI, or classified material. AI output and quality flags require human verification.</p></div>
  <main>
   <section id="overview" class="view active"><div class="section-header"><div><h2>Watch intelligence at a glance</h2><p>Local evidence, quality signals, and emerging operational knowledge.</p></div><button class="accent fl-btn fl-btn--primary" data-nav="ingest"><span data-icon="plus"></span>Import log</button></div>
+    <div id="welcome" class="welcome fl-card fl-empty" hidden><img class="welcome-emblem only-dark" src="/brand/emblem-dark.png" alt="Eight Bells" width="300" height="300"><img class="welcome-emblem only-light" src="/brand/emblem-light.png" alt="Eight Bells" width="300" height="300"><h2>Every watch, accounted for.</h2><p>Import a watch log to see quality signals, open conditions and turnover notes, each linked back to its source entry.</p><button class="accent fl-btn fl-btn--primary fl-btn--lg" data-nav="ingest"><span data-icon="plus"></span>Import your first log</button></div>
     <div class="metrics"><button class="metric" data-nav="ingest"><span>LOG SOURCES</span><strong id="metricLogs">0</strong><em>Imported records <span data-icon="arrowRight"></span></em></button><button class="metric" data-nav="quality"><span>QUALITY FLAGS</span><strong id="metricFlags">0</strong><em>Inspect observations <span data-icon="arrowRight"></span></em></button><button class="metric" data-nav="turnover"><span>OPEN CONDITIONS</span><strong id="metricOpen">0</strong><em>Review continuity <span data-icon="arrowRight"></span></em></button><button class="metric" data-nav="memory"><span>MEMORY RECORDS</span><strong id="metricLessons">0</strong><em>Explore knowledge <span data-icon="arrowRight"></span></em></button></div>
     <div class="twocol"><article class="panel fl-card"><div class="panel-head"><h3>Recent watch logs</h3><button class="text-btn fl-btn fl-btn--ghost" data-nav="ingest">View all <span data-icon="arrowRight"></span></button></div><div id="recentLogs" class="stack"></div></article>
     <article class="panel fl-card"><div class="panel-head"><h3>Intelligence signals</h3><span class="pill fl-badge">Advisory</span></div><div id="signals" class="stack"></div></article></div>
