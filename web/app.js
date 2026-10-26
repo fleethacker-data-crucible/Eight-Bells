@@ -45,6 +45,9 @@ function opts(){const options=state.logs.map(l=>'<option value="'+escapeHTML(l.i
 function render(){
  state.logs=array(state.logs);state.lessons=array(state.lessons);state.reviews=array(state.reviews);state.audit=array(state.audit);
  el('metricLogs').textContent=state.logs.length;
+ // An empty workspace opens on the welcome panel (emblem and one action) in place of two empty panels.
+ el('welcome').hidden=state.logs.length>0;
+ document.querySelector('#overview .twocol').hidden=state.logs.length===0;
  el('metricFlags').textContent=state.logs.reduce((n,l)=>n+array(l.analysis?.findings).length,0);
  el('metricOpen').textContent=state.logs.reduce((n,l)=>n+array(l.analysis?.open).length,0);
  el('metricLessons').textContent=state.lessons.length;

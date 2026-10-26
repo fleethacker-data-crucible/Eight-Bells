@@ -160,9 +160,9 @@ function Audit($s,[string]$action,[string]$target){
   if(@($s.audit).Count -gt 2000){$s.audit=@($s.audit|Select-Object -Last 2000)}
 }
 function J($o){return (ConvertTo-Json -InputObject $o -Depth 70 -Compress)}
-function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){
+function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){ReplyBytes $stream $status ([Text.Encoding]::UTF8.GetBytes($body)) $mime}
+function ReplyBytes($stream,[int]$status,[byte[]]$data,[string]$mime){
   $reason=switch($status){200{'OK'}201{'Created'}400{'Bad Request'}401{'Unauthorized'}403{'Forbidden'}404{'Not Found'}413{'Payload Too Large'}500{'Internal Server Error'}default{'Error'}}
-  $data=[Text.Encoding]::UTF8.GetBytes($body)
   $nl=[string][char]13+[char]10
   $head="HTTP/1.1 $status $reason"+$nl+"Content-Type: $mime"+$nl+"Content-Length: $($data.Length)"+$nl+"Cache-Control: no-store"+$nl+"X-Content-Type-Options: nosniff"+$nl+"X-Frame-Options: DENY"+$nl+"Referrer-Policy: no-referrer"+$nl+"Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"+$nl+"Connection: close"+$nl+$nl
   $h=[Text.Encoding]::ASCII.GetBytes($head)
@@ -200,6 +200,9 @@ function Read-Http($stream){
 $script:uiFiles=@{
   '/'='web/index.html';'/engine.js'='web/engine.js';'/lifecycle.js'='web/lifecycle.js';'/app.js'='web/app.js';'/styles.css'='web/styles.css'
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
+  # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
+  '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'
+  '/brand/favicon.ico'='web/brand/favicon.ico';'/favicon.ico'='web/brand/favicon.ico'
 }
 function Process-Http($req,$stream){
   $path=$req.path
@@ -209,6 +212,8 @@ function Process-Http($req,$stream){
     $name=$script:uiFiles[$path]
     $file=Join-Path $root $name
     if(!(Test-Path $file)){Reject $stream 404 'Missing UI asset';return}
+    if($name.EndsWith('.png')){ReplyBytes $stream 200 ([IO.File]::ReadAllBytes($file)) 'image/png';return}
+    if($name.EndsWith('.ico')){ReplyBytes $stream 200 ([IO.File]::ReadAllBytes($file)) 'image/x-icon';return}
     $mime=if($name.EndsWith('.js')){'application/javascript; charset=utf-8'}elseif($name.EndsWith('.css')){'text/css; charset=utf-8'}elseif($name.EndsWith('.svg')){'image/svg+xml; charset=utf-8'}else{'text/html; charset=utf-8'}
     Reply $stream 200 ([IO.File]::ReadAllText($file,[Text.Encoding]::UTF8)) $mime;return
   }

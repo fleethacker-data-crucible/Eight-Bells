@@ -31,8 +31,23 @@ h4 { font-size: var(--fl-text-secondary); font-weight: 600; margin: 16px 0 4px; 
   display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; overflow-x: hidden;
   background: var(--fl-sidebar); border-right: 1px solid var(--fl-border); padding: 0 0 8px;
 }
-.brand { display: flex; align-items: center; gap: 12px; min-height: var(--fl-header-height); padding: 8px 12px; border-bottom: 1px solid var(--fl-border); }
-.brand-mark { width: 40px; height: 40px; flex-shrink: 0; }
+/* Brand: the full emblem with its wordmark when expanded, the emblem's circle when collapsed. */
+.brand { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: var(--fl-header-height); padding: 4px 12px 8px; border-bottom: 1px solid var(--fl-border); }
+.brand-emblem { width: 184px; height: 184px; }
+.brand-icon { display: none; width: 40px; height: 40px; flex-shrink: 0; }
+/* Theme-specific artwork: the Night watch or Chart room version of the emblem. */
+.only-light { display: none; }
+:root[data-theme='light'] .only-dark { display: none; }
+:root[data-theme='light'] .only-light { display: block; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .only-dark { display: none; }
+  :root:not([data-theme='dark']) .only-light { display: block; }
+}
+/* Welcome: an empty workspace opens on the emblem and one action (UNIFIED-UI 6, .fl-empty). */
+.welcome { padding: 32px 24px; margin-bottom: 16px; }
+.welcome[hidden], .twocol[hidden] { display: none; }
+.welcome .welcome-emblem { width: clamp(200px, 34vh, 300px); height: auto; }
+.welcome p { max-width: 56ch; margin: 0; color: var(--fl-muted-foreground); }
 .wordmark { display: grid; gap: 4px; line-height: 1; min-width: 0; }
 .wordmark-name { font: var(--fl-text-section) var(--fl-font-display); font-weight: 400; letter-spacing: 0.14em; color: var(--fl-foreground); white-space: nowrap; }
 .wordmark-rule { display: flex; align-items: center; gap: 4px; color: var(--fl-brass); }
@@ -52,7 +67,8 @@ h4 { font-size: var(--fl-text-secondary); font-weight: 600; margin: 16px 0 4px; 
 .sidebar .fl-nav .nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .nav-label { overflow: hidden; text-overflow: ellipsis; }
 .sidebar-collapsed .brand { justify-content: center; padding: 8px 0; }
-.sidebar-collapsed .brand-mark { width: 36px; height: 36px; }
+:root.sidebar-collapsed .brand .brand-emblem { display: none; }
+.sidebar-collapsed .brand .brand-icon { display: block; }
 .sidebar-collapsed .wordmark, .sidebar-collapsed .nav-caption, .sidebar-collapsed .nav-label { display: none; }
 .sidebar-collapsed .sidebar .fl-nav .nav-btn { justify-content: center; padding: 0; }
 .sidebar-collapsed .sidebar-nav { padding-top: 12px; }
@@ -61,7 +77,8 @@ h4 { font-size: var(--fl-text-secondary); font-weight: 600; margin: 16px 0 4px; 
 @media (max-width: 1023.98px) {
   .shell { grid-template-columns: var(--fl-sidebar-collapsed) minmax(0, 1fr); }
   .brand { justify-content: center; padding: 8px 0; }
-  .brand-mark { width: 36px; height: 36px; }
+  :root .brand .brand-emblem { display: none; }
+  .brand .brand-icon { display: block; }
   .wordmark, .nav-caption, .nav-label, .collapse-btn { display: none !important; }
   .sidebar .fl-nav .nav-btn { justify-content: center; padding: 0; }
   .sidebar-nav { padding-top: 12px; }
