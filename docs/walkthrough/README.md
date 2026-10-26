@@ -15,11 +15,11 @@ Import watch logs, review their quality, and build an evidence-linked turnover f
 
 ### 1. First launch
 
-Eight Bells opens on the **Command Center**, empty until you import logs.
+Eight Bells opens on the **Command Center**. Until you import logs it shows a welcome panel with one action, **Import your first log**.
 
 *The NON-OPERATIONAL TRAINING BUILD banner at the top of most pages is the app's built-in training-build disclaimer. It is part of the app, not a marking on the data.*
 
-![Eight Bells Command Center on first launch with no logs imported, all counts at 0, and the built-in training-build disclaimer banner.](../assets/walkthrough/01-first-launch.png)
+![Eight Bells Command Center on first launch: the welcome panel with the Eight Bells emblem and Import your first log, all counts at 0, and the built-in training-build disclaimer banner.](../assets/walkthrough/01-first-launch.png)
 
 ### 2. Import logs
 
@@ -59,4 +59,4 @@ The **Command Center** now summarizes the watch.
 
 ## About these images
 
-Images live in [`docs/assets/walkthrough/`](../assets/walkthrough/), named `NN-<screen>.png` after the step they belong to. They are 1440x900 at 100% scale in the Dark (Eight Bells has one theme) theme, and show demo data only.
+Images live in [`docs/assets/walkthrough/`](../assets/walkthrough/), named `NN-<screen>.png` after the step they belong to. They are 1440x900 at 100% scale in the Night watch (dark) theme, and show demo data only. Retake them with [`docs/screenshots/capture-walkthrough.js`](../screenshots/capture-walkthrough.js) against an isolated test server with an empty store (usage at the top of the script).
