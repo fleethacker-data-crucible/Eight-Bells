@@ -1,5 +1,5 @@
 # Synthetic Eight Bells ingestion fixtures
-ALL CONTENT IS FICTIONAL. No real ship, personnel, equipment identifiers, operating parameters, or events. Not official Navy forms or procedures.
+ALL CONTENT IS FICTIONAL. No real ship, personnel, equipment identifiers, operating parameters, or events. Not official forms or procedures.
 
 ## Ready for current text importer
 - engineering_normal.log — routine watch
