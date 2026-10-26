@@ -7,7 +7,8 @@ const escapeHTML=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 const array=x=>Array.isArray(x)?x:x?[x]:[];
 let token=(location.hash.match(/(?:^#|&)token=([^&]+)/)||[])[1]||'';
 let state={logs:[],lessons:[],reviews:[],audit:[]},chosenFinding=null,chosenLog=null,previewUrl=null;
-function notify(message,error){el('notice').textContent=message;el('notice').style.color=error?'#ffb7a7':'#83dcbc';}
+const shell=window.EightBellsShell||{setEngine(){},setSession(){}};
+function notify(message,error){el('notice').textContent=message;el('notice').classList.toggle('is-error',!!error);}
 async function api(path,data){
  if(!token)throw Error('No launch session token. Start Eight Bells with Launch-EightBells.bat.');
  const res=await fetch(path,{method:data===undefined?'GET':'POST',headers:{'X-EightBells-Token':token,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),cache:'no-store'});
@@ -18,7 +19,7 @@ async function api(path,data){
 function bind(id,event,handler){el(id).addEventListener(event,handler);}
 function visit(name){
  document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===name));
- document.querySelectorAll('.nav-btn').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
+ document.querySelectorAll('.nav-btn').forEach(x=>{const on=x.dataset.view===name;x.classList.toggle('active',on);if(on)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current');});
  const labels={overview:'Command Center',ingest:'Ingestion Studio',quality:'Quality Assurance',turnover:'Watch Turnover',memory:'Operational Memory',settings:'AI & Diagnostics'};
  el('pageTitle').textContent=labels[name]||name;el('breadcrumb').textContent=(labels[name]||name).toUpperCase();
  if(name==='settings')refreshDiagnostics();
@@ -44,6 +45,9 @@ function opts(){const options=state.logs.map(l=>'<option value="'+escapeHTML(l.i
 function render(){
  state.logs=array(state.logs);state.lessons=array(state.lessons);state.reviews=array(state.reviews);state.audit=array(state.audit);
  el('metricLogs').textContent=state.logs.length;
+ // An empty workspace opens on the welcome panel (emblem and one action) in place of two empty panels.
+ el('welcome').hidden=state.logs.length>0;
+ document.querySelector('#overview .twocol').hidden=state.logs.length===0;
  el('metricFlags').textContent=state.logs.reduce((n,l)=>n+array(l.analysis?.findings).length,0);
  el('metricOpen').textContent=state.logs.reduce((n,l)=>n+array(l.analysis?.open).length,0);
  el('metricLessons').textContent=state.lessons.length;
@@ -65,7 +69,7 @@ function renderQuality(){
  el('qualitySummary').textContent=f.length+' advisory findings · '+open.length+' potential open conditions · Quality heuristic '+(l.analysis?.score??'—')+'/100';
  el('qualityFindings').innerHTML=f.map(x=>{
  const reviews=state.reviews.filter(r=>r.logId===l.id&&r.findingId===x.id);
- return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(x.type)+' <span class="pill warn">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
+ return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(x.type)+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
  }).join('')||'<p class="hint">No heuristic findings. This is not proof of completeness.</p>';
  renderFinding();
 }
@@ -88,7 +92,7 @@ function renderMemory(){
  el('memoryResults').innerHTML=docs.filter(d=>!q||(d.title+' '+d.content).toLowerCase().includes(q)).slice(0,12).map(d=>'<div class="row-item"><b>'+escapeHTML(d.title)+'</b><small>'+escapeHTML(d.source)+'</small><p>'+escapeHTML(d.content.slice(0,160))+'</p></div>').join('')||'<p class="hint">No matches in encrypted local records.</p>';
  const candidates=E.candidates(state.logs);
  el('memoryCandidates').innerHTML=candidates.map((c,i)=>'<button class="row-item" data-candidate="'+i+'"><b>'+escapeHTML(c.title)+'</b><p>'+escapeHTML(c.description)+'</p><small>'+c.evidence.length+' source records · Click to draft lesson</small></button>').join('')||'<p class="hint">No recurring candidates across at least two imported logs.</p>';
- el('lessonList').innerHTML=state.lessons.slice().reverse().map(l=>'<div class="row-item"><b>'+escapeHTML(l.title)+' <span class="pill">'+escapeHTML(l.status)+'</span></b><p>'+escapeHTML(l.body)+'</p><small>Source: '+escapeHTML(l.source||'General')+'</small> '+(l.status==='draft'?'<button class="outline small" data-review-lesson="'+escapeHTML(l.id)+'">Mark reviewed</button>':'')+'</div>').join('')||'<p class="hint">Create a human-reviewed lesson from source evidence.</p>';
+ el('lessonList').innerHTML=state.lessons.slice().reverse().map(l=>'<div class="row-item"><b>'+escapeHTML(l.title)+' <span class="pill fl-badge">'+escapeHTML(l.status)+'</span></b><p>'+escapeHTML(l.body)+'</p><small>Source: '+escapeHTML(l.source||'General')+'</small> '+(l.status==='draft'?'<button class="outline small fl-btn fl-btn--secondary" data-review-lesson="'+escapeHTML(l.id)+'">Mark reviewed</button>':'')+'</div>').join('')||'<p class="hint">Create a human-reviewed lesson from source evidence.</p>';
 }
 async function markLesson(id){if(!confirm('Mark lesson locally reviewed? This is not an authenticated command approval.'))return;try{await api('/api/lesson/review',{id});await refresh();notify('Lesson marked reviewed.')}catch(e){notify(e.message,true);}}
 function viewPreview(){
@@ -180,11 +184,18 @@ async function endSession(){
  if(!confirm('End this Eight Bells session? The local server stops; reopen it with Launch-EightBells.bat.'))return;
  stopHeartbeat();
  try{await api('/api/shutdown',{});}
- catch(e){stopHeartbeat=L.startHeartbeat({token});throw e;}
+ catch(e){stopHeartbeat=beat();throw e;}
  document.querySelectorAll('#endSession,#shutdown').forEach(b=>{b.disabled=true;});
+ shell.setEngine('stopped');shell.setSession('Session ended');
  notify('Session ended; the server has stopped. You can close this tab.');
 }
 bind('shutdown','click',safe(endSession));bind('endSession','click',safe(endSession));
-if(!token){notify('Session token missing. Launch via Launch-EightBells.bat rather than manually typing localhost.',true);}
-else{stopHeartbeat=L.startHeartbeat({token});refresh().catch(e=>notify('Cannot load state: '+e.message,true));}
+// Status bar: the heartbeat reports whether the engine answers; without a token only /health can be asked.
+function beat(){return L.startHeartbeat({token,onStatus:ok=>shell.setEngine(ok?'running':'disconnected')});}
+if(!token){
+ notify('Session token missing. Launch via Launch-EightBells.bat rather than manually typing localhost.',true);
+ shell.setSession('No session token');
+ fetch('/health',{cache:'no-store'}).then(r=>shell.setEngine(r.ok?'running':'disconnected'),()=>shell.setEngine('disconnected'));
+}
+else{stopHeartbeat=beat();shell.setSession('Session active');refresh().catch(e=>notify('Cannot load state: '+e.message,true));}
 })();
