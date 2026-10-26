@@ -1,4 +1,9 @@
-<p align="center"><img src="assets/brand/emblem-light.png" width="280" alt="Eight Bells"></p>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/emblem-dark.png">
+    <img src="assets/brand/emblem-light.png" width="280" alt="Eight Bells emblem: a ship's bell and an hourglass, inside a brass compass ring">
+  </picture>
+</p>
 
 # Eight Bells
 
@@ -12,9 +17,11 @@ Eight bells is rung at the change of the watch. Eight Bells supports watch relie
 
 Eight Bells ingests log text and structured exports, highlights possible quality deficiencies, drafts watch turnover, preserves event histories, and supports evidence-linked lessons learned.
 
-![Eight Bells Command Center in the Night watch theme](docs/screenshots/command-center-night-watch.png)
+| Night watch (dark) | Chart room (light) |
+| --- | --- |
+| ![Eight Bells Command Center in the Night watch theme](docs/screenshots/command-center-night-watch.png) | ![Eight Bells Command Center in the Chart room theme](docs/screenshots/command-center-chart-room.png) |
 
-Eight Bells has a single dark theme (Night watch); it does not follow the Windows light/dark setting yet, so there is no Chart room (light) screenshot. The screenshot shows only the synthetic fixtures in [samples](samples/README.md).
+Eight Bells follows the Windows light/dark setting by default; the theme button in the sidebar switches between Follow Windows, Night watch and Chart room. The screenshots show only the synthetic fixtures in [samples](samples/README.md), captured by `docs/screenshots/capture-landing.js` against an isolated test server.
 
 ## Quick start (Windows)
 
