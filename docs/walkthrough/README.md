@@ -2,7 +2,7 @@
 
 Import watch logs, review their quality, and build an evidence-linked turnover for the relieving watchstander.
 
-> **Status: skeleton.** The screenshots below are placeholders. Zombie Admin captures them with demo data, and the Chief of Staff scans them for sensitive content before they are added (team directive 10). Until then the image links do not resolve.
+> **Screenshots:** captured with demo data and scanned by the Chief of Staff (team directive 10).
 
 ## Before you start
 
@@ -17,43 +17,45 @@ Import watch logs, review their quality, and build an evidence-linked turnover f
 
 Eight Bells opens on the **Command Center**, empty until you import logs.
 
-![Eight Bells Command Center on first launch, before any logs are imported.](../assets/walkthrough/01-first-launch.png)
+*The NON-OPERATIONAL TRAINING BUILD banner at the top of most pages is the app's built-in training-build disclaimer. It is part of the app, not a marking on the data.*
+
+![Eight Bells Command Center on first launch with no logs imported, all counts at 0, and the built-in training-build disclaimer banner.](../assets/walkthrough/01-first-launch.png)
 
 ### 2. Import logs
 
-In **Log Ingestion Studio**, add log files. Text, CSV and JSON exports are parsed.
+In **Ingestion Studio**, add log files and select **Analyze and securely import**. Text, CSV and JSON exports are parsed. The *SIMULATED / TRAINING ONLY* lines come from the synthetic sample logs themselves.
 
-![Eight Bells Log Ingestion Studio after importing three synthetic sample logs.](../assets/walkthrough/02-ingest.png)
+![Eight Bells Ingestion Studio with an extraction preview of a sample log and three synthetic sample logs in the imported source library.](../assets/walkthrough/02-ingest.png)
 
 ### 3. Review quality
 
-**Log Quality Assurance** flags unresolved conditions, repeated content and out-of-sequence times.
+**Quality Assurance** flags potential unresolved conditions, repeated content and out-of-sequence times. Select a log and a finding to review its source lines. Here the discrepancy sample log shows its Pump B finding.
 
-![Eight Bells Log Quality Assurance page flagging an unresolved discrepancy, repeated content and an out-of-sequence time in the sample logs.](../assets/walkthrough/03-quality.png)
+![Eight Bells Quality Assurance page for the sample discrepancy log, with the Pump B unresolved-condition finding open next to its source lines.](../assets/walkthrough/03-quality.png)
 
 ### 4. Build the turnover
 
-**Watch Turnover** lists what is open and what changed, each linked to its evidence.
+**Watch Turnover** builds a draft briefing for a source log: relevant observations, potentially open conditions and quality findings, each linked to its source lines. Select **Generate draft**; a human must verify it.
 
-![Eight Bells Watch Turnover page with open items and changes since the last watch, each linked to its evidence.](../assets/walkthrough/04-turnover.png)
+![Eight Bells Watch Turnover review draft for the sample discrepancy log, listing observations and the open Pump B condition with source lines.](../assets/walkthrough/04-turnover.png)
 
 ### 5. Keep lessons learned
 
-**Operational Memory** keeps lessons learned across watches.
+**Operational Memory** keeps lessons learned across watches, drawn from the imported sample logs. Mark a draft lesson reviewed once you have checked it.
 
-![Eight Bells Operational Memory page with lessons learned from the sample logs.](../assets/walkthrough/05-memory.png)
+![Eight Bells Operational Memory with the sample log sources and a lesson library of two lessons from the sample logs, one draft and one reviewed.](../assets/walkthrough/05-memory.png)
 
 ### 6. See it at a glance
 
 The **Command Center** now summarizes the watch.
 
-![Eight Bells Command Center with watch intelligence at a glance for the imported sample logs.](../assets/walkthrough/06-command-center.png)
+![Eight Bells Command Center after import: 3 log sources, 5 quality flags, 2 open conditions and 2 memory records, with the recent sample logs.](../assets/walkthrough/06-command-center.png)
 
 ### 7. AI and diagnostics
 
-**AI & Diagnostics** holds the optional AI endpoint and the startup checks.
+**AI & Diagnostics** holds the optional AI provider for this session and the diagnostics console. AI stays off until you configure a provider.
 
-![Eight Bells AI and Diagnostics page with AI turned off and the diagnostics passing.](../assets/walkthrough/07-settings.png)
+![Eight Bells AI and Diagnostics page with AI off: placeholder provider URL and model, an empty API key, and the diagnostics console.](../assets/walkthrough/07-settings.png)
 
 ## About these images
 
