@@ -11,7 +11,7 @@ foreach($a in @($Rest)){
   }
 }
 # Windows PowerShell 5.1 does not always preload the DPAPI ProtectedData assembly.
-# This is a standard .NET Framework assembly; no install, policy change, or CAC bypass.
+# This is a standard .NET Framework assembly; no install, policy change, or smart card bypass.
 Add-Type -AssemblyName System.Security -ErrorAction Stop
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $root 'EightBells-Process.ps1')

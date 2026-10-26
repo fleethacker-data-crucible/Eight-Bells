@@ -1,4 +1,4 @@
-# Eight Bells — local development (no CAC)
+# Eight Bells — local development (no smart card)
 
 Run `Launch-LocalDev.bat` on your **personal Windows PC** after checking out the feature branch. Do not run on a managed system to evade organization security controls.
 
@@ -6,7 +6,7 @@ Run `Launch-LocalDev.bat` on your **personal Windows PC** after checking out the
 
 - Prerequisite: Windows PowerShell 5.1.
 - Startup: New -LocalDev mode uses %LOCALAPPDATA%\EightBells-LocalDev for the encrypted DPAPI store and logs, separate from %LOCALAPPDATA%\EightBells. An existing %LOCALAPPDATA%\LogHawk-LocalDev folder is copied forward once and left untouched. Browser UI and import/analysis flows operate against this test database.
-- Boundary: AI endpoints remain optional and still require separate credentials. Import only simulated watch logs; no CAC/real operational logs are required.
+- Boundary: AI endpoints remain optional and still require separate credentials. Import only simulated watch logs; no smart card or real operational logs are required.
 - Diagnostics / manual check: `powershell.exe -NoProfile -File Start-EightBells.ps1 -LocalDev -Diagnostics`.
 - Lifecycle: the server stops itself shortly after its tab closes. `Launch-LocalDev.bat --stay` keeps it running, `--replace` replaces a running Eight Bells without asking, and `Stop-EightBells.ps1` stops every instance. The runtime file is `%LOCALAPPDATA%\EightBells-LocalDev\logs\eightbells-server-<pid>.json`.
 
@@ -14,10 +14,10 @@ Run `Launch-LocalDev.bat` on your **personal Windows PC** after checking out the
 
 ```powershell
 git fetch origin
-git switch feature/local-dev-no-cac-launcher
+git switch <feature-branch>
 .\Launch-LocalDev.bat
 ```
 
-Normal launchers and production authentication remain unchanged. This is **not** an authenticated Navy session. Do not enter CUI, classified material, real credentials or real personnel information during personal-computer testing.
+Normal launchers and production authentication remain unchanged. This is **not** an authenticated operational session. Do not enter sensitive or regulated data, real credentials or real personnel information during personal-computer testing.
 
 For release, delete the local development launcher from the release branch or leave it out of the release package. Real connections must continue to require approved credentials and authorization.

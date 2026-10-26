@@ -47,4 +47,4 @@ Use explicit stable IDs, provenance and versioning; never silently rewrite origi
 8. Red-team application security, AI prompt injection, model exfiltration, HTTP parsing, power loss, concurrency, and malformed files before any live deployment.
 
 ## Operational policy
-This code is **not** authorized for classified, CUI, OPSEC-sensitive, maintenance-control, or official shipboard logs without appropriate approvals. A local-first prototype is not equivalent to a certified security boundary or accredited system.
+This code is **not** authorized for sensitive or regulated data, OPSEC-sensitive, maintenance-control, or official shipboard logs without appropriate approvals. A local-first prototype is not equivalent to a certified security boundary or accredited system.

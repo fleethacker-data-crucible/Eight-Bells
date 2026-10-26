@@ -8,13 +8,13 @@ Local-first watchstanding log intelligence: quality review, evidence-linked turn
 
 Eight bells is rung at the change of the watch. Eight Bells supports watch relief and turnover: it helps the relieving watchstander see what is open, what changed, and where the evidence is. Formerly LogHawk.
 
-**Status:** Windows-first engineering prototype, **not accredited** for sensitive or operational Navy data. **Use synthetic, non-sensitive training logs only.** The system does not replace authoritative watch records, qualified watch relief, or approved procedures.
+**Status:** Windows-first engineering prototype, **not accredited** for sensitive or operational data. **Use synthetic, non-sensitive training logs only.** The system does not replace authoritative watch records, qualified watch relief, or approved procedures.
 
 Eight Bells ingests log text and structured exports, highlights possible quality deficiencies, drafts watch turnover, preserves event histories, and supports evidence-linked lessons learned.
 
 ## Quick start (Windows)
 
-1. Clone: `git clone https://github.com/sun-of-anton/Eight-Bells.git`
+1. Clone: `git clone https://github.com/fleethacker-data-crucible/Eight-Bells.git`
 2. Double-click **`Launch-EightBells.bat`** (the old `LogHawk.bat` name still works and forwards to it). This starts a hidden PowerShell 5.1 service, selects a free localhost port on the same bound socket, opens your browser with a temporary session token, and shows a startup status.
 3. Use **`EightBells-CLI.bat`** for an interactive terminal with diagnostics and the same GUI.
 4. Closing the Eight Bells tab stops the server on its own (about 5 s after the tab closes, or 20 s after the last heartbeat). Use **End session** in the sidebar to stop it immediately.
