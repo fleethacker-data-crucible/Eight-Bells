@@ -35,6 +35,8 @@ async function fresh(browser,colorScheme){
   if(await page.textContent('#metricLogs')==='0'){
    for(const [file,watch] of samples){
     await page.click('button.nav-btn[data-view="ingest"]');
+    // Clear the previous file's text first: waiting for any text would otherwise pass before the new file loads.
+    await page.fill('#logText','');
     await page.setInputFiles('#importFile',path.join(root,'samples',file));
     await page.waitForFunction(()=>document.getElementById('logText').value.length>0);
     await page.selectOption('#watchType',watch);
