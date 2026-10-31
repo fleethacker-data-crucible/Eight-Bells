@@ -61,7 +61,9 @@
   <section id="memory" class="view"><div class="section-header"><div><h2>Operational Memory</h2><p>Searchable history, recurring-pattern candidates, and reviewed lessons.</p></div><button id="exportBtn" class="outline fl-btn fl-btn--secondary"><span data-icon="download"></span>Export JSON</button></div>
     <div class="twocol unequal"><article class="panel fl-card"><h3>Cross-watch intelligence</h3><label for="memorySearch">Search evidence and lessons</label><input class="fl-input" id="memorySearch" placeholder="e.g. Pump B vibration"><div id="memoryResults" class="stack"></div><h3>Recurring-pattern candidates</h3><div id="memoryCandidates" class="stack"></div></article>
     <article class="panel fl-card"><h3>Knowledge capture</h3><label for="lessonTitle">Lesson title</label><input class="fl-input" id="lessonTitle" placeholder="Observed recurrence during turnover"><label for="lessonSource">Source log</label><select class="fl-input" id="lessonSource"></select><label for="lessonBody">Evidence, validated outcome, and limitations</label><textarea class="fl-input" id="lessonBody" placeholder="What happened? What was verified? What remains unknown?"></textarea><button id="lessonSave" class="accent full fl-btn fl-btn--primary">Save draft lesson</button><p class="hint">Reviewed status is a local workflow annotation—not a verified supervisory signature.</p></article></div>
-    <article class="panel fl-card"><h3>Lesson library</h3><div id="lessonList" class="stack"></div></article>
+    <article class="panel fl-card"><h3>Lesson library</h3>
+<button id="halyardExport" class="outline small fl-btn fl-btn--secondary" type="button">Export reviewed lessons for Halyard (JSON)</button><p class="hint">Reviewed lessons become STORY proposals for Halyard's sandbox review. Sizing stays TBD. Drafts are not exported.</p>
+<div id="lessonList" class="stack"></div></article>
   </section>
   <section id="settings" class="view"><div class="section-header"><div><h2>AI & Diagnostics</h2><p>Manage optional approved AI and inspect local application health.</p></div></div>
     <div class="twocol"><article class="panel fl-card"><h3>AI provider · Manual</h3><p class="hint">Lazarette credential integration is not connected yet. Credentials entered here are held in server memory only for this session, not persisted.</p><label for="endpoint">OpenAI-compatible chat completions URL</label><input class="fl-input" id="endpoint" placeholder="https://approved.example/v1/chat/completions"><label for="model">Model ID</label><input class="fl-input" id="model" placeholder="approved-model"><label for="aiKey">API key (optional, session only)</label><input class="fl-input" id="aiKey" type="password" autocomplete="off"><button id="aiConfig" class="accent full fl-btn fl-btn--primary">Configure session provider</button><button id="aiClear" class="outline full fl-btn fl-btn--secondary">Clear provider credentials</button></article>
@@ -78,6 +80,7 @@
  <span class="version">Eight Bells v2 · training data only</span>
 </footer>
 </div>
-<script src="/engine.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
+<script src="/engine.js"></script>
+<script src="/halyard-export.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
 <script src="/voice.js"></script>
 </body></html>
