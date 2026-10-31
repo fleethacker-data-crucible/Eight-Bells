@@ -1,0 +1,4 @@
+timestamp	equipment	reading_type	value	unit	description
+0800	Pump A	discharge pressure	42	psi	Routine reading
+0900	Pump A	discharge pressure	43	psi	Routine reading
+1000	Pump A	discharge pressure	43	psi	Routine reading
