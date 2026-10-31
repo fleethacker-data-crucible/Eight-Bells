@@ -44,6 +44,7 @@
     <label for="watchType">Watch profile</label><select class="fl-input" id="watchType"><option>Engineering</option><option>Bridge / Quarterdeck</option><option>Damage Control</option><option>Security</option><option>Communications</option><option>Other</option></select>
     <label for="format">Parser</label><select class="fl-input" id="format"><option value="auto">Detect automatically</option><option value="text">Plain text / transcript</option><option value="csv">CSV table</option><option value="json">JSON export</option></select>
     <label for="interval">Required reading interval (optional)</label><select class="fl-input" id="interval"><option value="0">Not configured</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option></select>
+    <label for="profileFile">Reading rules (optional, JSON profile)</label><input class="fl-input" id="profileFile" type="file" accept=".json"><p id="profileStatus" class="hint">No profile loaded. A profile lists the readings a watch must record (range, unit, interval). You write it; Eight Bells ships no limits. See samples/profile_engineering_synthetic.json.</p>
     <button id="analyzeBtn" class="accent full fl-btn fl-btn--primary">Analyze and securely import <span data-icon="arrowRight"></span></button></article>
     <article class="panel fl-card"><h3>2 · Review source text</h3><label for="logText">Editable source text or verified transcription</label><textarea id="logText" class="fl-input source-editor" spellcheck="false" placeholder="0800 Watch assumed&#10;0830 Pump B abnormal vibration observed&#10;0845 Supervisor notified"></textarea>
     <div class="panel inset"><h4>Extraction preview</h4><div id="previewStatus" class="hint">Select or enter a log to preview the extraction.</div><div id="previewEntries" class="stack scroll"></div></div></article></div>
@@ -77,5 +78,5 @@
  <span class="version">Eight Bells v2 · training data only</span>
 </footer>
 </div>
-<script src="/engine.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
+<script src="/engine.js"></script><script src="/profiles.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
 </body></html>

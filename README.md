@@ -62,7 +62,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions |
 | Images | Local preview; manual transcript or explicit opt-in remote vision transcription (PNG/JPEG/WebP, 2MB max) |
 | PDF | **Manual transcription only; no PDF extraction engine** |
-| Quality | Timestamp regression, configurable reading interval gaps, copy-forward candidates, missing dispositions |
+| Quality | Timestamp regression, configurable reading interval gaps, copy-forward candidates, missing dispositions. Optional **watch-profile rules** (`web/profiles.js`): load a JSON profile of per-equipment reading rules (range, unit, interval, required readings) on the Ingestion page; findings are advisory. Eight Bells ships **no limits**: the sample profile is synthetic and says it is not an approved requirement |
 | Evidence | Source line references for entries and quality findings |
 | Review | Append-only-in-application reviewer dispositions, explanations and timestamps |
 | Turnover | Offline deterministic draft with source line references, suspected unresolved conditions |
