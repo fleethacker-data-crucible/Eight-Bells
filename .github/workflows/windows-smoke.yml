@@ -42,5 +42,5 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
-          .\tests\Audit-Test.ps1
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Audit-Test.ps1
           if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
