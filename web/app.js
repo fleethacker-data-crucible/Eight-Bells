@@ -152,7 +152,7 @@ function download(name,data,mime){
  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 async function configureAI(clear){
- let data=clear?{endpoint:'',model:'',key:''}:{endpoint:el('endpoint').value.trim(),model:el('model').value.trim(),key:el('aiKey').value};
+ let data=clear?{endpoint:'',model:'',key:''}:{endpoint:el('endpoint').value.trim(),model:el('model').value.trim(),key:el('aiKey').value,useVault:el('aiVault').checked};
  await api('/api/ai/config',data);el('aiKey').value='';notify(clear?'AI configuration cleared.':'AI session provider configured.');
 }
 async function runAI(){
