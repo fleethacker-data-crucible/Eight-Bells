@@ -22,7 +22,7 @@ The browser posts extracted entries and QA findings along with source text, and 
 - Repeated *identical normalized narratives* and repeated readings are candidates for inspection, **not falsification findings**.
 - Resolution and outstanding condition inference are heuristic. Entities may be missing; a generic `restored` statement cannot be safely assumed to resolve a named fault.
 - Crossing midnight can be legitimate; small timestamp regressions are flagged while large rollover is treated as possible watch transition.
-- Watch-specific reading requirements must be configured manually in the UI. Limits and form requirements are not yet validated against authoritative data.
+- Watch-specific reading requirements are loaded as a profile the user writes (JSON; `web/profiles.js`, example `samples/profile_engineering_synthetic.json`) beside the manual interval. Eight Bells ships no limits, and profiles are not validated against authoritative data or forms.
 - Every finding must be reviewed against actual source documents, equipment, procedures and contemporaneous records.
 
 ## Future schema
