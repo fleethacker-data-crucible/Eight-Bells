@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/emblem-dark.png">
-    <img src="assets/brand/emblem-light.png" width="280" alt="Eight Bells emblem: a ship's bell and an hourglass, inside a brass compass ring">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/emblem-dark-transparent.png">
+    <img src="assets/brand/emblem-light-transparent.png" width="280" alt="Eight Bells emblem: a ship's bell and an hourglass, inside a brass compass ring">
   </picture>
 </p>
 
@@ -50,7 +50,6 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 - `readings.csv` — actual CSV header/row parsing.
 - `elog_export.json` — actual JSON event parsing.
 - `noisy_ocr.txt` — transcription corruption.
-- `form_watch.html` — printable simulated paper form, suitable for a synthetic photograph.
 
 ## Implemented in v2
 
@@ -62,13 +61,16 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Storage | User-scoped Windows DPAPI encrypted store under `%LOCALAPPDATA%\EightBells\store.v2.dpapi` (copied forward once from `%LOCALAPPDATA%\LogHawk` if present) |
 | Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions |
 | Images | Local preview; manual transcript or explicit opt-in remote vision transcription (PNG/JPEG/WebP, 2MB max) |
+| Voice | **Read aloud** for the turnover draft, using on-device Windows voices only (an online voice is refused). **Dictation** into the source text, only when the browser can recognise speech on the device (`processLocally`) and you approve each use; otherwise it says so and points to typing, pasting or Windows voice typing (Win+H). Dictated text is unverified until you check it |
 | PDF | **Manual transcription only; no PDF extraction engine** |
 | Quality | Timestamp regression, configurable reading interval gaps, copy-forward candidates, missing dispositions |
 | Evidence | Source line references for entries and quality findings |
 | Review | Append-only-in-application reviewer dispositions, explanations and timestamps |
 | Turnover | Offline deterministic draft with source line references, suspected unresolved conditions |
 | Memory | Local searchable log/lesson store, recurring equipment candidates across separate logs |
+| Halyard hand-off | Reviewed lessons export as `STORY ::` proposals (title, `halyard-meta` fence, acceptance criteria, tasks, labels) in a JSON file for Halyard's sandbox review. Sizing stays `TBD`; the theme and parent Feature are defaults (`THEME-watch-lessons`, `FEATURE-lessons-follow-up`) to be set to real ids in Halyard. Checked against Halyard's work-item model doc, not against a live Halyard |
 | AI | Manually configured OpenAI-compatible chat endpoint, optional key held **in process memory only** |
+| Schema (library) | `web/schema.js`: stable content-derived IDs, source/entry/finding records with provenance, and the lesson lifecycle (draft, in-review, approved, rejected, superseded, expired) with a two-person rule. A tested library; **not yet stored by the server**, and a reviewer is a typed name, not a verified identity |
 | Privacy | No remote calls unless manually configured and explicitly authorized for each AI request |
 | Diagnostics | Local service logs (excluding log content and AI keys), GUI diagnostics and status |
 | Testing | Node parsing QA regression tests and Windows PowerShell 5.1 authenticated service smoke test |

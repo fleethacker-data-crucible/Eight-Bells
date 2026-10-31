@@ -30,6 +30,21 @@ assert.strictEqual(engine.parse('0800 No new discrepancies observed\n0830 No ala
 const logA={id:'a',entries:abnormal.entries,analysis:abnormal.analysis};
 const logB={id:'b',entries:abnormal.entries,analysis:abnormal.analysis};
 assert(engine.candidates([logA,logB]).some(x=>x.title.toLowerCase().includes('pump')));
-console.log('PASS: 11 deterministic ingestion, QA, turnover, and recurrence tests');
+// Configurable reading-interval gaps: flagged when the gap is over 1.75x the configured interval and under 10 hours.
+const gapOf=(text,minutes)=>engine.analyze(engine.parse(text,'text').entries,{intervalMinutes:minutes}).findings.filter(x=>x.type==='interval-gap');
+const pair='0800 Readings taken\n0900 Readings taken';
+assert.strictEqual(gapOf(pair,30).length,1,'60 minute gap against a 30 minute interval');
+assert.deepStrictEqual(gapOf(pair,30)[0].lines,[1,2]);
+assert.strictEqual(gapOf(pair,0).length,0,'No interval configured means no gap findings');
+assert.strictEqual(gapOf(pair,'abc').length,0,'A non-numeric interval is treated as not configured');
+assert.strictEqual(gapOf(pair,'30').length,1,'The UI passes the interval as a string');
+assert.strictEqual(gapOf('0800 Readings taken\n0852 Readings taken',30).length,0,'52 minutes is inside 1.75x of 30');
+assert.strictEqual(gapOf('0800 Readings taken\n0853 Readings taken',30).length,1,'53 minutes is outside 1.75x of 30');
+assert.strictEqual(gapOf('0800 Readings taken\n0830 Readings taken\n0900 Readings taken',30).length,0,'On-time readings raise nothing');
+assert.strictEqual(gapOf('0800 Readings taken\n1800 Readings taken',30).length,0,'A gap of 10 hours or more is treated as a watch change');
+assert.strictEqual(gapOf('0800 Readings taken\nno time on this line\n0930 Readings taken',30).length,1,'Entries without a time are skipped when measuring gaps');
+assert.strictEqual(gapOf(pair,15)[0].detail,'Observed 60 minute gap versus configured 15 minute interval.');
+assert(engine.analyze(engine.parse(pair,'text').entries,{intervalMinutes:30}).score<100,'An interval gap lowers the advisory score');
+console.log('PASS: 23 deterministic ingestion, QA, interval-gap, turnover, and recurrence tests');
 // Keep the controller regressions in the existing CI Node-test entry point.
 require('./turnover.test.js');
