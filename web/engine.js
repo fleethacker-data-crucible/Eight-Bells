@@ -30,5 +30,20 @@ return {findings,open,score,graded:'Advisory only; score does not establish log 
 }
 function turnover(log){const a=log.analysis||analyze(log.entries||[]),events=(log.entries||[]).filter(x=>x.issue||x.resolution);let lines=['WATCH TURNOVER · REVIEW DRAFT',log.name||'Untitled','Source '+(log.id||'?')+' · '+(log.imported||''),'', 'RELEVANT OBSERVATIONS'];for(const e of events)lines.push('Line '+e.line+' | '+(e.time||'Unknown time')+' | '+e.text);if(!events.length)lines.push('No issue keywords detected; this does not establish there were no issues.');lines.push('','POTENTIALLY OPEN CONDITIONS');for(const o of a.open||[])lines.push((o.equipment||'Unknown')+': '+o.latest+' (source line '+o.lines[o.lines.length-1]+')');if(!(a.open||[]).length)lines.push('None inferred. Verify against official status records.');lines.push('','DOCUMENT QUALITY REVIEW');for(const f of a.findings||[])lines.push(f.type+': '+f.detail+' [lines '+f.lines.join(', ')+']');if(!(a.findings||[]).length)lines.push('No heuristic findings; not an endorsement of completeness.');lines.push('','Watchstander verification required. This is not the official record.');return lines.join('\n');}
 function candidates(logs){let map=new Map();for(const log of logs){for(const o of (log.analysis&&log.analysis.open)||[]){let k=(o.equipment||'').toLowerCase();if(!k||k==='unattributed')continue;let a=map.get(k)||{name:o.equipment,logs:[],evidence:[]};if(!a.logs.includes(log.id))a.logs.push(log.id);a.evidence.push({logId:log.id,lines:o.lines});map.set(k,a);}}return [...map.values()].filter(x=>x.logs.length>=2).map(x=>({title:'Recurring condition: '+x.name,description:'Similar potentially open conditions appear across '+x.logs.length+' logs. Validate identity, dates and maintenance history before approving a lesson.',evidence:x.evidence,status:'candidate'}));}
-return {parse,analyze,turnover,candidates,csv};
+const list=x=>Array.isArray(x)?x:[];
+// Fleet data-source rows: one per watch profile, with log, open-condition, finding and lesson counts. No record text.
+function semaphoreRows(logs,lessons){
+ const groups=new Map(),watchOf=new Map();
+ const group=name=>{let g=groups.get(name);if(!g){g={watch:name,logs:0,openConditions:0,findings:0,lessonsDraft:0,lessonsReviewed:0};groups.set(name,g);}return g;};
+ for(const log of list(logs)){const name=clean(log.watch)||'Unassigned';watchOf.set(log.id,name);const g=group(name);g.logs++;g.openConditions+=list(log.analysis?.open).length;g.findings+=list(log.analysis?.findings).length;}
+ for(const lesson of list(lessons)){const g=group(watchOf.get(lesson.source)||'General');if(lesson.status==='reviewed')g.lessonsReviewed++;else g.lessonsDraft++;}
+ return [...groups.values()].sort((a,b)=>a.watch.localeCompare(b.watch));
+}
+// The same rows as RFC 4180 CSV with a header line; fields containing commas, quotes or line breaks are quoted.
+function semaphoreCsv(rows){
+ const cell=v=>{const s=String(v);return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+ const head=['watch','logs','open_conditions','findings','lessons_draft','lessons_reviewed'];
+ return [head.join(',')].concat(list(rows).map(r=>[r.watch,r.logs,r.openConditions,r.findings,r.lessonsDraft,r.lessonsReviewed].map(cell).join(','))).join('\r\n')+'\r\n';
+}
+return {parse,analyze,turnover,candidates,csv,semaphoreRows,semaphoreCsv};
 });
