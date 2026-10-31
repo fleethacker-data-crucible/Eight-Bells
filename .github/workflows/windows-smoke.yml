@@ -16,7 +16,7 @@ jobs:
       - name: Check PowerShell syntax
         shell: powershell
         run: |
-          $files = @('Start-EightBells.ps1','Stop-EightBells.ps1','Stop-LogHawk.ps1','EightBells-Process.ps1','tests/Smoke-Test.ps1')
+          $files = @('Start-EightBells.ps1','Stop-EightBells.ps1','Stop-LogHawk.ps1','EightBells-Process.ps1','tests/Smoke-Test.ps1','tests/Router-Test.ps1','tests/TestHelpers.ps1','tests/fixtures/Fake-LlmServer.ps1')
           foreach($path in $files) {
             $tokens = $null
             $errors = $null
@@ -38,3 +38,9 @@ jobs:
       - name: End-to-end Windows service smoke
         shell: powershell
         run: .\tests\Smoke-Test.ps1
+      - name: Opt-in model router against a fake local model
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Router-Test.ps1
+          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran

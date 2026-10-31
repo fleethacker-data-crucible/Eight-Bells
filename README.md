@@ -88,6 +88,8 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 ## AI configuration
 
 > **Intelligence router:** the manual AI provider will move behind the Fleet intelligence router, [Fairlead](https://github.com/fleethacker-data-crucible/Fairlead), so Eight Bells defaults to the router instead of a hand-entered endpoint. Until then the manual settings stay as they are. See [TechStack](TechStack), "Intelligence router".
+>
+> **Opt-in router mode (off by default):** `POST /api/ai/config` with `{"router":true}` points the AI path at the local router address (`http://127.0.0.1:8776/v1/chat/completions`, or `EIGHTBELLS_FAIRLEAD_URL`), uses the model name `auto`, sends no key (the router holds provider keys) and adds `X-Fairlead-Privacy: local` to every request. The address must be local HTTP. Per-request consent still applies. Tested against a fake local model only; **not proven against a live Fairlead**, and there is no UI switch yet.
 
 Go to **AI & Diagnostics**, enter a specific approved HTTPS `/chat/completions` endpoint (or HTTP loopback for a local model), model name and optional session-only bearer key. The AI path expects OpenAI-compatible JSON response structure. Lazarette credentials are **not integrated in this build**; do not copy production secrets into an unapproved environment. Vision transcription requires a model that accepts image_url data payloads. Every request requires affirmative consent at the point of use.
 
