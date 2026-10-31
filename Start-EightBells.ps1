@@ -201,6 +201,7 @@ function Read-Http($stream){
 }
 # The only files the UI may load: request path -> file under the repository root. Nothing else is served.
 $script:uiFiles=@{
+  '/adapters.js'='web/adapters.js'
   '/'='web/index.html';'/engine.js'='web/engine.js';'/lifecycle.js'='web/lifecycle.js';'/app.js'='web/app.js';'/styles.css'='web/styles.css'
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
   '/halyard-export.js'='web/halyard-export.js'

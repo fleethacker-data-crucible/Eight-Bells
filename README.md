@@ -50,6 +50,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 - `readings.csv` — actual CSV header/row parsing.
 - `elog_export.json` — actual JSON event parsing.
 - `noisy_ocr.txt` — transcription corruption.
+- `elog_export.jsonl`, `readings.tsv`, `elog_export.xml` — the JSON Lines, tab-delimited and XML e-log adapters.
 
 ## Implemented in v2
 
@@ -59,7 +60,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Launch | Process-only execution policy; GUI/background and visible CLI launchers; OS-assigned port |
 | Session | Random per-process bearer token in browser URL fragment; authenticated API; Host and Origin checks |
 | Storage | User-scoped Windows DPAPI encrypted store under `%LOCALAPPDATA%\EightBells\store.v2.dpapi` (copied forward once from `%LOCALAPPDATA%\LogHawk` if present) |
-| Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions |
+| Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions. E-log adapters: JSON Lines, delimited tables (tab, semicolon, pipe) and XML exports (`web/adapters.js`; DTDs and entities are refused). The adapters read generic field names (time, equipment, text) from **synthetic** samples; no vendor's real e-log format has been checked |
 | Images | Local preview; manual transcript or explicit opt-in remote vision transcription (PNG/JPEG/WebP, 2MB max) |
 | Voice | **Read aloud** for the turnover draft, using on-device Windows voices only (an online voice is refused). **Dictation** into the source text, only when the browser can recognise speech on the device (`processLocally`) and you approve each use; otherwise it says so and points to typing, pasting or Windows voice typing (Win+H). Dictated text is unverified until you check it |
 | PDF | **Manual transcription only; no PDF extraction engine** |
@@ -112,6 +113,6 @@ The GitHub Actions workflow validates PowerShell syntax, fixture parsing, and an
 
 ## Outstanding for controlled operational deployment
 
-Dedicated electronic-log adapters, offline OCR, secure shared-device identity/RBAC, interoperable Lazarette credential vault integration, approved SQLCipher backend, immutable audit chain, file-based original-document vault, model governance and evaluation, records retention, accreditation and cyber authorization. These are explicit engineering requirements, not claimed completed features.
+Adapters for real vendor e-log formats (the generic JSON Lines, table and XML adapters are built), offline OCR, secure shared-device identity/RBAC, interoperable Lazarette credential vault integration, approved SQLCipher backend, immutable audit chain, file-based original-document vault, model governance and evaluation, records retention, accreditation and cyber authorization. These are explicit engineering requirements, not claimed completed features.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for architecture, security boundaries and roadmap.
