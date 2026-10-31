@@ -71,9 +71,10 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | AI | Manually configured OpenAI-compatible chat endpoint, optional key held **in process memory only** |
 | Privacy | No remote calls unless manually configured and explicitly authorized for each AI request |
 | Diagnostics | Local service logs (excluding log content and AI keys), GUI diagnostics and status |
+| Audit | Hash-chained audit trail: each event stores the SHA-256 of the one before it, and `GET /api/audit/verify` reports the first broken entry. Detects edits and removals in the middle of the trail; **tamper-evident, not tamper-proof** (see qualifiers) |
 | Testing | Node parsing QA regression tests and Windows PowerShell 5.1 authenticated service smoke test |
 
-**Important qualifiers:** "Append-only-in-application" is not tamper-proof; users with filesystem/control of the same Windows account may still affect the store. DPAPI protects data at rest for a Windows user, **not** cross-account sharing, administrator compromise, or enterprise access control. The application has no identity proofing for the person marking a lesson "reviewed." AI outputs are not automatically approved or trusted.
+**Important qualifiers:** The audit chain does not stop someone who can rewrite the whole encrypted store; it also cannot show that the newest entries were not dropped unless the chain head is anchored outside the store. "Append-only-in-application" is not tamper-proof; users with filesystem/control of the same Windows account may still affect the store. DPAPI protects data at rest for a Windows user, **not** cross-account sharing, administrator compromise, or enterprise access control. The application has no identity proofing for the person marking a lesson "reviewed." AI outputs are not automatically approved or trusted.
 
 ## Data boundaries
 
@@ -108,6 +109,6 @@ The GitHub Actions workflow validates PowerShell syntax, fixture parsing, and an
 
 ## Outstanding for controlled operational deployment
 
-Dedicated electronic-log adapters, offline OCR, secure shared-device identity/RBAC, interoperable Lazarette credential vault integration, approved SQLCipher backend, immutable audit chain, file-based original-document vault, model governance and evaluation, records retention, accreditation and cyber authorization. These are explicit engineering requirements, not claimed completed features.
+Dedicated electronic-log adapters, offline OCR, secure shared-device identity/RBAC, interoperable Lazarette credential vault integration, approved SQLCipher backend, external anchoring of the audit chain, file-based original-document vault, model governance and evaluation, records retention, accreditation and cyber authorization. These are explicit engineering requirements, not claimed completed features.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for architecture, security boundaries and roadmap.
