@@ -128,7 +128,10 @@ $script:tabs=@{}
 $script:startedAt=[DateTime]::UtcNow
 # If a browser was opened but never sent a heartbeat (closed before loading, or failed to open), stop after 2 minutes.
 $script:firstContactMs=if($NoBrowser){0}else{120000}
-$script:ai=@{endpoint='';model='';key=''}
+$script:ai=@{endpoint='';model='';key='';router=$false}
+# Opt-in intelligence router (Fairlead). Off unless a client asks for it; the router holds the provider keys, so no key is sent.
+$script:routerUrl=Get-EnvSetting 'FAIRLEAD_URL'
+if([string]::IsNullOrEmpty($script:routerUrl)){$script:routerUrl='http://127.0.0.1:8776/v1/chat/completions'}
 $bytes=New-Object byte[] 32
 $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes);$rng.Dispose()
@@ -282,13 +285,19 @@ function Process-Http($req,$stream){
     Audit $s 'lesson-reviewed' ([string]$obj.id);Save-State $s;Reply $stream 200 (J @{ok=$true});return
   }
   if($path -eq '/api/ai/config'){
+    if($obj.router -is [bool] -and $obj.router){
+      $ruri=$null
+      if(![Uri]::TryCreate($script:routerUrl,[UriKind]::Absolute,[ref]$ruri) -or $ruri.Scheme -ne 'http' -or $ruri.Host -notin @('127.0.0.1','localhost')){Reject $stream 400 'The router address must be a local HTTP address';return}
+      $script:ai=@{endpoint=$script:routerUrl;model=$(if([string]::IsNullOrEmpty([string]$obj.model)){'auto'}else{[string]$obj.model});key='';router=$true}
+      Reply $stream 200 (J @{configured=$true;router=$true;model=$script:ai.model});return
+    }
     $endpoint=[string]$obj.endpoint
-    if(!$endpoint){$script:ai=@{endpoint='';model='';key=''};Reply $stream 200 (J @{configured=$false});return}
+    if(!$endpoint){$script:ai=@{endpoint='';model='';key='';router=$false};Reply $stream 200 (J @{configured=$false});return}
     $uri=$null
     if(![Uri]::TryCreate($endpoint,[UriKind]::Absolute,[ref]$uri)){Reject $stream 400 'Invalid endpoint';return}
     if($uri.Scheme -ne 'https' -and !(($uri.Scheme -eq 'http') -and ($uri.Host -in @('127.0.0.1','localhost')))){Reject $stream 400 'Only HTTPS or local HTTP AI endpoints are allowed';return}
     if($uri.UserInfo){Reject $stream 400 'Credentials in endpoint are prohibited';return}
-    $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key}
+    $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key;router=$false}
     Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
   }
   if($path -eq '/api/vision'){
@@ -306,6 +315,7 @@ function Process-Http($req,$stream){
     $body=J @{model=$script:ai.model;messages=@($message);temperature=0.0;max_tokens=3000}
     $headers=@{}
     if($script:ai.key){$headers['Authorization']='Bearer '+$script:ai.key}
+    if($script:ai.router){$headers['X-Fairlead-Privacy']='local'}
     try{
       $result=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
       $transcript=[string]$result.choices[0].message.content
@@ -324,6 +334,7 @@ function Process-Http($req,$stream){
     $body=J @{model=$script:ai.model;temperature=0.1;messages=@(@{role='system';content='Create a cautious evidence-linked turnover draft, plain text.'},@{role='user';content=$prompt})}
     $headers=@{}
     if($script:ai.key){$headers['Authorization']='Bearer '+$script:ai.key}
+    if($script:ai.router){$headers['X-Fairlead-Privacy']='local'}
     try{
       $response=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
       $answer=[string]$response.choices[0].message.content

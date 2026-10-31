@@ -1,6 +1,6 @@
 param([Parameter(Mandatory=$true)][int]$Port,[Parameter(Mandatory=$true)][string]$Record,[ValidateSet('ok','fail','empty')][string]$Mode='ok',[string]$Reply='SYNTHETIC REPLY: Pump B vibration remains open (Line 1).')
 # Fake OpenAI-compatible chat endpoint for tests. Binds loopback only, answers every POST, and appends one JSON line per
-# request (path, Authorization header, parsed body) to -Record. Synthetic data only; it never talks to the network.
+# request (path, Authorization and X-Fairlead-Privacy headers, parsed body) to -Record. Synthetic data only; no network.
 $ErrorActionPreference='Stop'
 $listener=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,$Port)
 $listener.Start()
@@ -26,15 +26,16 @@ try{
       if($buf.Count -eq 0){continue}
       $lines=([Text.Encoding]::ASCII.GetString($buf.ToArray()) -split '\r\n')
       $path=($lines[0] -split ' ')[1]
-      $auth='';$len=0
+      $auth='';$privacy='';$len=0
       foreach($l in $lines){
         if($l -match '^authorization:\s*(.*)$'){$auth=$Matches[1]}
+        if($l -match '^x-fairlead-privacy:\s*(.*)$'){$privacy=$Matches[1]}
         if($l -match '^content-length:\s*(\d+)$'){$len=[int]$Matches[1]}
       }
       $data=New-Object byte[] $len;$off=0
       while($off -lt $len){$n=$stream.Read($data,$off,$len-$off);if($n -le 0){break};$off+=$n}
       $body=[Text.Encoding]::UTF8.GetString($data)
-      $entry=@{path=$path;auth=$auth;body=($body|ConvertFrom-Json)}
+      $entry=@{path=$path;auth=$auth;privacy=$privacy;body=($body|ConvertFrom-Json)}
       Add-Content -LiteralPath $Record -Value (ConvertTo-Json -InputObject $entry -Depth 20 -Compress) -Encoding UTF8
       if($Mode -eq 'fail'){Send $stream 500 '{"error":"synthetic upstream failure"}'}
       elseif($Mode -eq 'empty'){Send $stream 200 '{"choices":[{"message":{"content":""}}]}'}
