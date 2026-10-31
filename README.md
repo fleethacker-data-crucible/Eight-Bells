@@ -62,6 +62,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions |
 | Images | Local preview; manual transcript or explicit opt-in remote vision transcription (PNG/JPEG/WebP, 2MB max) |
 | PDF | Reads the **text layer** of digital PDFs (`web/pdf.js`, pure script, no install): classic objects, page order, Flate streams, single-byte fonts. **It is not OCR**: a scanned PDF gives no text and says so. Encrypted PDFs, object streams, Type0/ToUnicode fonts and image filters are refused or warned, never guessed. Extracted text is unverified until you check it. Tested on tiny synthetic PDFs only, not on PDFs from real systems |
+| Parser port | `EightBells-Engine.ps1` is a Windows PowerShell 5.1 port of the engine (text, CSV, JSON parse, analysis, turnover, recurring candidates). `tests/golden/engine.golden.json` is produced by the JavaScript engine (`node tools/gen-golden.js`) and `tests/Engine-Test.ps1` holds the port to it. **The server's import still stores the entries the page sends**; the port is the base for a trusted backend parser and is used by the command line, not yet by the import route |
 | Quality | Timestamp regression, configurable reading interval gaps, copy-forward candidates, missing dispositions |
 | Evidence | Source line references for entries and quality findings |
 | Review | Append-only-in-application reviewer dispositions, explanations and timestamps |

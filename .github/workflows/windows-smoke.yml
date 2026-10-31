@@ -41,6 +41,18 @@ jobs:
           $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
           node tests\pdf.test.js
           if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
+      - name: Test golden file against the engine
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
+          node tests\engine-golden.test.js
+          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
+      - name: PowerShell engine port against the golden file
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Engine-Test.ps1
+          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
       - name: End-to-end Windows service smoke
         shell: powershell
         run: .\tests\Smoke-Test.ps1
