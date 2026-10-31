@@ -7,6 +7,7 @@ const escapeHTML=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<'
 const array=x=>Array.isArray(x)?x:x?[x]:[];
 let token=(location.hash.match(/(?:^#|&)token=([^&]+)/)||[])[1]||'';
 let state={logs:[],lessons:[],reviews:[],audit:[]},chosenFinding=null,chosenLog=null,previewUrl=null;
+let turnoverSource=null,turnoverDraft=null,aiRequest=0;
 const shell=window.EightBellsShell||{setEngine(){},setSession(){}};
 function notify(message,error){el('notice').textContent=message;el('notice').classList.toggle('is-error',!!error);}
 async function api(path,data){
@@ -30,7 +31,7 @@ document.addEventListener('click',ev=>{
  const finding=ev.target.closest('[data-finding]');
  if(finding){chosenFinding={logId:finding.dataset.log,findId:finding.dataset.finding};renderFinding();}
  const source=ev.target.closest('[data-source]');
- if(source){chosenLog=source.dataset.source;el('qualityLog').value=chosenLog;el('turnLog').value=chosenLog;renderQuality();visit('quality');}
+ if(source){chosenLog=source.dataset.source;el('qualityLog').value=chosenLog;el('turnLog').value=chosenLog;syncTurnover();renderQuality();visit('quality');}
  const sig=ev.target.closest('[data-signal]');
  if(sig){chosenLog=sig.dataset.signal;el('qualityLog').value=chosenLog;renderQuality();visit('quality');}
  const candidate=ev.target.closest('[data-candidate]');
@@ -40,6 +41,7 @@ document.addEventListener('click',ev=>{
 });
 function opts(){const options=state.logs.map(l=>'<option value="'+escapeHTML(l.id)+'">'+escapeHTML(l.name)+' · '+escapeHTML(l.watch)+'</option>').join('');
  for(const id of ['qualityLog','turnLog']){const old=el(id).value;el(id).innerHTML=options;el(id).value=(state.logs.find(x=>x.id===old)?old:(chosenLog||state.logs[0]?.id||''));}
+ syncTurnover();
  const prev=el('lessonSource').value;el('lessonSource').innerHTML='<option value="">General knowledge</option>'+options;el('lessonSource').value=prev;
 }
 function render(){
@@ -98,7 +100,7 @@ async function markLesson(id){if(!confirm('Mark lesson locally reviewed? This is
 function viewPreview(){
  const text=el('logText').value,fmt=el('format').value;
  try{
-  let p=E.parse(text,fmt),a=window.EightBellsProfiles.analyzeWithProfile(p.entries,activeProfile,{intervalMinutes:Number(el('interval').value)});
+  let p=window.EightBellsAdapters.parse(text,fmt),a=window.EightBellsProfiles.analyzeWithProfile(p.entries,activeProfile,{intervalMinutes:Number(el('interval').value)});
   el('previewStatus').textContent=p.entries.length+' entries · '+a.findings.length+' advisory findings · format: '+p.format;
   el('previewEntries').innerHTML=p.entries.slice(0,10).map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unspecified time')+' · '+escapeHTML(e.equipment||'No entity')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('');
   return {parsed:p,analysis:a};
@@ -146,7 +148,25 @@ async function saveLesson(){
  el('lessonTitle').value='';el('lessonBody').value='';await refresh();notify('Memory draft encrypted locally.');
 }
 function selectedTurn(){return getLog(el('turnLog').value);}
-function generateTurn(){const l=selectedTurn();if(!l)throw Error('Select a source log');el('turnText').textContent=E.turnover(l);notify('Turnover draft generated; requires source verification.');}
+function syncTurnover(){
+ const log=selectedTurn(),source=log?JSON.stringify(log):null;
+ if(source!==turnoverSource){
+  turnoverSource=source;turnoverDraft=null;aiRequest++;
+  el('aiText').textContent='AI has not been requested for this source.';
+  el('aiConsent').checked=false;el('runAi').disabled=false;
+ }
+ const ready=!!turnoverDraft;
+ el('copyTurn').disabled=!ready;el('saveTurn').disabled=!ready;
+ el('turnText').textContent=ready?turnoverDraft.text:'Choose a log and generate a new draft for that source.';
+ el('turnStatus').textContent=ready?'Draft source: '+log.name+' · Generated '+turnoverDraft.generatedAt+' · Requires source verification.':'No current draft. Generate again after changing the source.';
+}
+function generateTurn(){
+ syncTurnover();const log=selectedTurn();if(!log)throw Error('Select a source log');
+ const generatedAt=new Date().toISOString();
+ turnoverDraft={generatedAt,text:'Generated: '+generatedAt+'\n'+E.turnover(log)};
+ syncTurnover();notify('Turnover draft generated; requires source verification.');
+}
+function currentTurnover(){syncTurnover();if(!turnoverDraft)throw Error('Generate a draft for the selected source before copying or saving.');return turnoverDraft.text;}
 function download(name,data,mime){
  const url=URL.createObjectURL(new Blob([data],{type:mime||'text/plain'}));
  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
@@ -156,11 +176,19 @@ async function configureAI(clear){
  await api('/api/ai/config',data);el('aiKey').value='';notify(clear?'AI configuration cleared.':'AI session provider configured.');
 }
 async function runAI(){
+ syncTurnover();
  const l=selectedTurn();if(!l)throw Error('Select a source log');
  if(!el('aiConsent').checked)throw Error('Per-request AI transmission authorization required.');
+ const request=++aiRequest;
+ el('runAi').disabled=true;
  el('aiText').textContent='Contacting configured AI endpoint…';
- try{const r=await api('/api/ai/run',{logId:l.id,consent:true});el('aiText').textContent='UNVERIFIED AI DRAFT · '+r.model+'\n\n'+r.text;notify('AI draft received and marked unverified.');}
- finally{el('aiConsent').checked=false;}
+ try{
+  const r=await api('/api/ai/run',{logId:l.id,consent:true});syncTurnover();
+  if(request!==aiRequest)return;
+  el('aiText').textContent='UNVERIFIED AI DRAFT · '+r.model+'\nSource: '+l.name+'\nGenerated: '+new Date().toISOString()+'\n\n'+r.text;
+  notify('AI draft received and marked unverified.');
+ }catch(e){if(request===aiRequest){el('aiText').textContent='AI draft unavailable: '+e.message;throw e;}}
+ finally{if(request===aiRequest){el('aiConsent').checked=false;el('runAi').disabled=false;}}
 }
 async function refreshDiagnostics(){
  try{const d=await api('/api/diagnostics');el('diagOutput').textContent='STORAGE: '+d.storage+'\nAI CONFIGURED: '+d.aiConfigured+'\n\n'+array(d.lines).join('\n');}
@@ -184,6 +212,7 @@ async function loadProfile(){
 }
 bind('profileFile','change',safe(loadProfile));
 bind('sourceSearch','input',renderSources);bind('qualityLog','change',()=>{chosenFinding=null;renderQuality();});
+bind('turnLog','change',syncTurnover);
 bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',renderMemory);
 bind('lessonSave','click',safe(saveLesson));
 bind('halyardExport','click',safe(async()=>{
@@ -193,11 +222,32 @@ bind('halyardExport','click',safe(async()=>{
  notify(out.items.length+' lesson(s) exported for Halyard; '+out.skipped.length+' skipped. Review them in Halyard\'s sandbox before promoting.');
 }));
 bind('generateTurn','click',safe(generateTurn));
-bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(el('turnText').textContent);notify('Turnover copied to clipboard.');}));
-bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',el('turnText').textContent,'text/plain');}));
+bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(currentTurnover());notify('Turnover copied to clipboard.');}));
+bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',currentTurnover(),'text/plain');}));
 bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
+// Voice (web/voice.js): on-device speech only. voice.js loads after this file, so it is looked up when a button is pressed.
+let voice=null,dictation=null;
+const getVoice=()=>voice||(voice=window.EightBellsVoice.create(window));
+bind('readTurn','click',safe(async()=>{
+ const text=el('turnText').textContent;
+ if(/^Choose a log/.test(text))throw Error(window.EightBellsVoice.MESSAGES.nothing);
+ notify('Reading the draft aloud…');
+ const r=await getVoice().speak(text);
+ if(!r.ok)throw Error(r.message);
+ notify('Finished reading.');
+}));
+bind('stopTurn','click',()=>{getVoice().stop();notify('Stopped.');});
+bind('dictateBtn','click',safe(async()=>{
+ const r=getVoice().dictate({consent:el('dictateConsent').checked,
+  onText:t=>{const box=el('logText');box.value=(box.value?box.value.replace(/\s+$/,'')+'\n':'')+t;viewPreview();},
+  onError:m=>notify(m,true),
+  onEnd:()=>{dictation=null;el('dictateBtn').disabled=false;el('dictateConsent').checked=false;}});
+ if(!r.ok)throw Error(r.message);
+ dictation=r;el('dictateBtn').disabled=true;notify('Listening on this device. Say each entry, then check the text before importing.');
+}));
+bind('dictateStop','click',()=>{if(dictation)dictation.stop();});
 // The open tab owns the server: it stops itself shortly after the last tab closes (see lifecycle.js).
 let stopHeartbeat=function(){};
 async function endSession(){

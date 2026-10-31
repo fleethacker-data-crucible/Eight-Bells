@@ -36,6 +36,8 @@ The browser posts extracted entries and QA findings along with source text, and 
 
 Use explicit stable IDs, provenance and versioning; never silently rewrite originals.
 
+**Built so far:** `web/schema.js` derives stable IDs from content (SHA-256), builds `SourceDocument`, `WatchEntry` and `Finding` records with provenance, and implements the `Lesson` lifecycle (draft, in-review, approved, rejected, superseded, expired) as a checked state machine with a two-person rule and an expiry date, returning a new record on every transition. It is a tested library: **the server does not store these records yet**, `Event`, `ExtractedRegion` and `Turnover` approvals are not implemented, and a reviewer is a typed name, not a verified identity.
+
 ## Recommended next engineering milestones
 1. Replace browser-trusted parser with a signed/offline-capable .NET/PowerShell parser plus schema validation and an immutable raw document vault.
 2. Add approved offline image/PDF text and handwriting OCR with evidence bounding boxes, confidence, and correction UI. Do not claim OCR is reliable when not tested.
