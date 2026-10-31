@@ -46,3 +46,5 @@ assert.strictEqual(gapOf('0800 Readings taken\nno time on this line\n0930 Readin
 assert.strictEqual(gapOf(pair,15)[0].detail,'Observed 60 minute gap versus configured 15 minute interval.');
 assert(engine.analyze(engine.parse(pair,'text').entries,{intervalMinutes:30}).score<100,'An interval gap lowers the advisory score');
 console.log('PASS: 23 deterministic ingestion, QA, interval-gap, turnover, and recurrence tests');
+// Keep the controller regressions in the existing CI Node-test entry point.
+require('./turnover.test.js');
