@@ -184,6 +184,27 @@ bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',el('tu
 bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
+// Voice (web/voice.js): on-device speech only. voice.js loads after this file, so it is looked up when a button is pressed.
+let voice=null,dictation=null;
+const getVoice=()=>voice||(voice=window.EightBellsVoice.create(window));
+bind('readTurn','click',safe(async()=>{
+ const text=el('turnText').textContent;
+ if(/^Choose a log/.test(text))throw Error(window.EightBellsVoice.MESSAGES.nothing);
+ notify('Reading the draft aloud…');
+ const r=await getVoice().speak(text);
+ if(!r.ok)throw Error(r.message);
+ notify('Finished reading.');
+}));
+bind('stopTurn','click',()=>{getVoice().stop();notify('Stopped.');});
+bind('dictateBtn','click',safe(async()=>{
+ const r=getVoice().dictate({consent:el('dictateConsent').checked,
+  onText:t=>{const box=el('logText');box.value=(box.value?box.value.replace(/\s+$/,'')+'\n':'')+t;viewPreview();},
+  onError:m=>notify(m,true),
+  onEnd:()=>{dictation=null;el('dictateBtn').disabled=false;el('dictateConsent').checked=false;}});
+ if(!r.ok)throw Error(r.message);
+ dictation=r;el('dictateBtn').disabled=true;notify('Listening on this device. Say each entry, then check the text before importing.');
+}));
+bind('dictateStop','click',()=>{if(dictation)dictation.stop();});
 // The open tab owns the server: it stops itself shortly after the last tab closes (see lifecycle.js).
 let stopHeartbeat=function(){};
 async function endSession(){

@@ -61,6 +61,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Storage | User-scoped Windows DPAPI encrypted store under `%LOCALAPPDATA%\EightBells\store.v2.dpapi` (copied forward once from `%LOCALAPPDATA%\LogHawk` if present) |
 | Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions |
 | Images | Local preview; manual transcript or explicit opt-in remote vision transcription (PNG/JPEG/WebP, 2MB max) |
+| Voice | **Read aloud** for the turnover draft, using on-device Windows voices only (an online voice is refused). **Dictation** into the source text, only when the browser can recognise speech on the device (`processLocally`) and you approve each use; otherwise it says so and points to typing, pasting or Windows voice typing (Win+H). Dictated text is unverified until you check it |
 | PDF | **Manual transcription only; no PDF extraction engine** |
 | Quality | Timestamp regression, configurable reading interval gaps, copy-forward candidates, missing dispositions |
 | Evidence | Source line references for entries and quality findings |

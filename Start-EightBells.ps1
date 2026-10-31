@@ -204,6 +204,7 @@ $script:uiFiles=@{
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
   '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'
   '/brand/favicon.ico'='web/brand/favicon.ico';'/favicon.ico'='web/brand/favicon.ico'
+  '/voice.js'='web/voice.js'
 }
 function Process-Http($req,$stream){
   $path=$req.path
