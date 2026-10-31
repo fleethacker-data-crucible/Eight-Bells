@@ -10,8 +10,11 @@ ALL CONTENT IS FICTIONAL. No real ship, personnel, equipment identifiers, operat
 - damage_control_watch.txt — simulated DC log
 - security_patrol.txt — security watch
 - multiwatch_history.txt — recurring equipment condition across watches
-- readings.csv — structured tabular data (current importer treats as text, not typed CSV)
-- elog_export.json — structured export (current importer treats as text, not JSON records)
+- readings.csv — structured tabular data, parsed as CSV rows
+- elog_export.json — structured export, parsed as JSON records
+- elog_export.jsonl — JSON Lines e-log export, one event per line
+- readings.tsv — tab-delimited table (semicolon and pipe tables work the same way)
+- elog_export.xml — XML e-log export (DTDs and entities are refused)
 - noisy_ocr.txt — intentionally corrupted OCR-like transcript
 
 ## Future format adapters / parser regression fixtures

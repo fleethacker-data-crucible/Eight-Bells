@@ -98,7 +98,7 @@ async function markLesson(id){if(!confirm('Mark lesson locally reviewed? This is
 function viewPreview(){
  const text=el('logText').value,fmt=el('format').value;
  try{
-  let p=E.parse(text,fmt),a=E.analyze(p.entries,{intervalMinutes:Number(el('interval').value)});
+  let p=window.EightBellsAdapters.parse(text,fmt),a=E.analyze(p.entries,{intervalMinutes:Number(el('interval').value)});
   el('previewStatus').textContent=p.entries.length+' entries · '+a.findings.length+' advisory findings · format: '+p.format;
   el('previewEntries').innerHTML=p.entries.slice(0,10).map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unspecified time')+' · '+escapeHTML(e.equipment||'No entity')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('');
   return {parsed:p,analysis:a};
