@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<watchLog watch="Engineering" synthetic="true">
+  <entries>
+    <entry time="0800"><equipment>Fan 2</equipment><text>Fan 2 alarm received &amp; acknowledged</text></entry>
+    <entry time="0830"><equipment>Fan 2</equipment><text>Fan 2 fault under investigation</text></entry>
+    <entry time="0915"><equipment>Fan 2</equipment><text>Fan 2 restored and returned to service</text></entry>
+  </entries>
+</watchLog>
