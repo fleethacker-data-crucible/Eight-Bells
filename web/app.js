@@ -111,7 +111,7 @@ async function importLog(){
  if(!name||!content)throw Error('Provide a title and verified text.');
  const r=viewPreview();if(!r)throw Error('Correct source parsing errors before importing.');
  const file=el('importFile').files[0];
- await api('/api/import',{name,watch:el('watchType').value,content,sourceType:file&&/image|pdf/.test(file.type)?'manual-transcription':'digital-text',format:r.parsed.format,entries:r.parsed.entries,analysis:r.analysis});
+ await api('/api/import',{name,watch:el('watchType').value,content,sourceType:file&&/image/.test(file.type)?'manual-transcription':file&&/pdf/.test(file.type)?'pdf-text-layer':'digital-text',format:r.parsed.format,entries:r.parsed.entries,analysis:r.analysis});
  await refresh();visit('overview');notify('Encrypted log import completed.');
 }
 async function chooseFile(){
@@ -122,7 +122,14 @@ async function chooseFile(){
  const image=/^image\//.test(file.type)||/\.(png|jpg|jpeg|webp|tif|tiff)$/i.test(file.name);
  const pdf=/\.pdf$/i.test(file.name);
  if(image){previewUrl=URL.createObjectURL(file);el('imagePreview').src=previewUrl;el('previewWrap').classList.remove('hidden');el('visionActions').classList.remove('hidden');el('logText').value='';notify('Image preview ready. Enter a verified transcript; no OCR is claimed.');}
- else if(pdf){el('logText').value='';notify('PDF requires manual text transcription in this build.',true);}
+ else if(pdf){
+  el('logText').value='';
+  if(file.size>window.EightBellsPdf.MAX_BYTES)throw Error('The PDF is larger than 5 MB.');
+  const r=await window.EightBellsPdf.extractText(new Uint8Array(await file.arrayBuffer()));
+  el('logText').value=r.text;
+  const warn=r.warnings.join(' ');
+  notify(r.text?'PDF text layer read. It is unverified: check every line against the document before import.'+(warn?' '+warn:''):(warn||'No text was found in this PDF.'),!r.text);
+ }
  else{if(file.size>1500000)throw Error('File exceeds the 1.5MB text limit.');el('logText').value=await file.text();notify('Text file loaded for verification.');}
  viewPreview();
 }

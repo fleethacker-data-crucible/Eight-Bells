@@ -37,7 +37,7 @@
   </section>
   <section id="ingest" class="view"><div class="section-header"><div><h2>Log Ingestion Studio</h2><p>Bring in typed files, paste a transcript, or review an image while entering text.</p></div></div>
     <div class="twocol unequal"><article class="panel fl-card"><h3>1 · Select source</h3><label for="importFile">Source file</label><input class="fl-input" id="importFile" type="file" accept=".txt,.log,.md,.csv,.json,.jsonl,.tsv,.xml,.png,.jpg,.jpeg,.webp,.tiff,.tif,.pdf">
-    <p class="hint">TXT, LOG, Markdown, CSV, JSON, JSON Lines, tab/semicolon/pipe tables and XML e-log exports are parsed directly. Image and PDF files need a verified transcript in this build; the PDF itself is not read.</p>
+    <p class="hint">TXT, LOG, Markdown, CSV, JSON, JSON Lines, tab/semicolon/pipe tables and XML e-log exports are parsed directly. Image files need a verified transcript. PDF files are read for their text layer (this is not OCR, so a scanned PDF gives no text); check the extracted text before import.</p>
     <div id="previewWrap" class="preview hidden"><img id="imagePreview" alt="Selected log source preview"><p class="hint">Use the image as a transcription reference; the image itself is not stored in this version.</p></div>
     <div id="visionActions" class="hidden"><label class="check"><input type="checkbox" id="visionConsent"> I authorize sending this synthetic image to the configured, approved vision model for transcription.</label><button class="outline full fl-btn fl-btn--secondary" id="visionTranscribe"><span data-icon="scan"></span>Transcribe image with AI vision</button><p class="hint">The transcript requires manual review. No image is retained by Eight Bells, but the AI provider may process submitted content under its own policies.</p></div>
     <label for="logName">Log title</label><input class="fl-input" id="logName" placeholder="Auxiliary Engineering / 0800–1200">
@@ -80,6 +80,7 @@
  <span class="version">Eight Bells v2 · training data only</span>
 </footer>
 </div>
+<script src="/pdf.js"></script>
 <script src="/engine.js"></script>
 <script src="/adapters.js"></script>
 <script src="/halyard-export.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
