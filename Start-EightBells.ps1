@@ -237,7 +237,8 @@ function Process-Http($req,$stream){
   if($req.method -eq 'POST' -and $req.headers.ContainsKey('origin') -and $req.headers['origin'] -ne ('http://127.0.0.1:'+$script:port)){Reject $stream 403 'Origin rejected';return}
   if($req.method -eq 'GET' -and $path -eq '/api/state'){Reply $stream 200 (J (Load-State));return}
   if($req.method -eq 'GET' -and $path -eq '/api/diagnostics'){
-    $lines=if(Test-Path $log){@(Get-Content $log -Tail 100)}else{@()}
+    # Plain strings only: Get-Content output carries path properties that ConvertTo-Json would walk at depth 70.
+    $lines=if(Test-Path $log){@(Get-Content -LiteralPath $log -Tail 100 | ForEach-Object {[string]$_})}else{@()}
     Reply $stream 200 (J @{lines=$lines;storage='Windows CurrentUser DPAPI';aiConfigured=[bool]$script:ai.endpoint});return
   }
   if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
@@ -290,7 +291,7 @@ function Process-Http($req,$stream){
   }
   if($path -eq '/api/vision'){
     if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved vision-capable AI endpoint first';return}
-    if($obj.consent -ne $true){Reject $stream 403 'Explicit image transmission consent is required';return}
+    if($obj.consent -isnot [bool] -or $obj.consent -ne $true){Reject $stream 403 'Explicit image transmission consent is required';return}
     $mime=[string]$obj.mime
     if($mime -notin @('image/png','image/jpeg','image/webp')){Reject $stream 400 'Only PNG, JPEG and WebP are supported';return}
     $encoded=[string]$obj.base64
@@ -313,7 +314,7 @@ function Process-Http($req,$stream){
   }
   if($path -eq '/api/ai/run'){
     if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved AI endpoint';return}
-    if($obj.consent -ne $true){Reject $stream 403 'Explicit consent required';return}
+    if($obj.consent -isnot [bool] -or $obj.consent -ne $true){Reject $stream 403 'Explicit consent required';return}
     $s=Load-State;$item=@($s.logs|Where-Object {$_.id -eq [string]$obj.logId})
     if(!$item){Reject $stream 404 'Log not found';return}
     $lines=@($item[0].entries|Select-Object -First 150|ForEach-Object {'Line '+$_.line+': '+$_.text})
