@@ -13,46 +13,39 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
-      - name: Check PowerShell syntax
+      - name: Check PowerShell syntax (every .ps1 in the repository)
         shell: powershell
         run: |
-          $files = @('Start-EightBells.ps1','Stop-EightBells.ps1','Stop-LogHawk.ps1','EightBells-Process.ps1','tests/Smoke-Test.ps1','tests/Ai-Test.ps1','tests/TestHelpers.ps1','tests/fixtures/Fake-LlmServer.ps1')
-          foreach($path in $files) {
+          $files = Get-ChildItem -Recurse -File -Filter *.ps1 | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]|[\\/]node_modules[\\/]' }
+          foreach($file in $files) {
             $tokens = $null
             $errors = $null
-            $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
-            if($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error; exit 1 }
+            $null = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName,[ref]$tokens,[ref]$errors)
+            if($errors.Count -gt 0) { Write-Host ("Syntax errors in " + $file.FullName); $errors | Format-List | Out-String | Write-Error; exit 1 }
           }
-      - name: Test parser and quality engine
+          Write-Host ("Parsed " + @($files).Count + " PowerShell files")
+      - name: Node tests (every tests/*.test.js)
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
-          node tests\engine.test.js
-          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
-      - name: Test Halyard lesson export
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
-          node tests\halyard-export.test.js
-          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
-      - name: Test browser tab lifecycle (heartbeat and leaving beacon)
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
-          node tests\lifecycle.test.js
-          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
-      - name: Test Semaphore data-source export
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
-          node tests\semaphore-export.test.js
-          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
+          $failed = @()
+          foreach($t in (Get-ChildItem tests -Filter '*.test.js' | Sort-Object Name)) {
+            Write-Host ("== " + $t.Name)
+            node $t.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $t.Name }   # a non-zero code, or a command that never ran, fails the step
+          }
+          if ($failed.Count -gt 0) { throw ("Failed: " + ($failed -join ', ')) }
       - name: End-to-end Windows service smoke
         shell: powershell
         run: .\tests\Smoke-Test.ps1
-      - name: AI endpoint and vision routes against a fake local model
+      - name: PowerShell service tests (every tests/*-Test.ps1 except the smoke test)
         shell: powershell
         run: |
           $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
-          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Ai-Test.ps1
-          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
+          $failed = @()
+          foreach($t in (Get-ChildItem tests -Filter '*-Test.ps1' | Where-Object { $_.Name -ne 'Smoke-Test.ps1' } | Sort-Object Name)) {
+            Write-Host ("== " + $t.Name)
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $t.FullName
+            if ($LASTEXITCODE -ne 0) { $failed += $t.Name }   # each test runs in its own process so its exit code is seen
+          }
+          if ($failed.Count -gt 0) { throw ("Failed: " + ($failed -join ', ')) }
