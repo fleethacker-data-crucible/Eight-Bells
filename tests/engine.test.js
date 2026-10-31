@@ -31,3 +31,5 @@ const logA={id:'a',entries:abnormal.entries,analysis:abnormal.analysis};
 const logB={id:'b',entries:abnormal.entries,analysis:abnormal.analysis};
 assert(engine.candidates([logA,logB]).some(x=>x.title.toLowerCase().includes('pump')));
 console.log('PASS: 11 deterministic ingestion, QA, turnover, and recurrence tests');
+// Keep the controller regressions in the existing CI Node-test entry point.
+require('./turnover.test.js');
