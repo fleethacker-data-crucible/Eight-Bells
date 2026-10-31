@@ -11,6 +11,7 @@ function Get-EightBellsCommands{
   $formats='auto','text','csv','json'
   return @(
     [ordered]@{name='status show';route='GET /api/state';summary='Counts of logs, lessons, reviews and audit entries, and whether a server is running for this data folder.';inputs=@();destructive=$false;writes=$false}
+    [ordered]@{name='audit verify';route='GET /api/audit/verify';summary='Check the hash chain of the audit trail. Exit 1 and the first broken entry if it does not hold.';inputs=@();destructive=$false;writes=$false}
     [ordered]@{name='log list';route='GET /api/state';summary='List imported logs.';inputs=@();destructive=$false;writes=$false}
     [ordered]@{name='log show';route='GET /api/state';summary='One log with its analysis summary.';inputs=@((New-EbInput 'id' 'string' $true 'Log id'));destructive=$false;writes=$false}
     [ordered]@{name='log import';route='POST /api/import';summary='Parse a text, CSV or JSON file with the engine port and store it as a log.';inputs=@((New-EbInput 'file' 'string' $true 'Path of the file to import'),(New-EbInput 'name' 'string' $false 'Log title (default: the file name)'),(New-EbInput 'watch' 'string' $false 'Watch profile label (default: Other)'),(New-EbInput 'format' 'string' $false 'auto, text, csv or json (default: auto)' $formats),(New-EbInput 'interval' 'number' $false 'Required reading interval in minutes (default: none)'));destructive=$false;writes=$true}

@@ -8,9 +8,9 @@ $sandbox=New-TestSandbox
 $data=Join-Path $sandbox 'data'
 $errFile=Join-Path $sandbox 'stderr.txt'
 $svc=$null
-function Run([string[]]$CliArgs){
+function Run([string[]]$CliArgs,[string]$Dir=$data){
   $ErrorActionPreference='Continue'   # PowerShell 5.1 turns a native command's stderr into an error under Stop
-  $out=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli @CliArgs --data-dir $data 2>$errFile
+  $out=& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $cli @CliArgs --data-dir $Dir 2>$errFile
   $code=$LASTEXITCODE
   $text=($out -join "`n")
   $json=$null;try{if($text.TrimStart().StartsWith('{')){$json=$text|ConvertFrom-Json}}catch{}
@@ -99,6 +99,22 @@ try{
   Assert-True (@((Expect @('memory','search','--q','pump','--json') 0 'search').Json.result.results).Count -ge 1) 'search finds the log text'
   Assert-True ((Expect @('status','show','--json') 0 'status').Json.result.audit -ge 6) 'every write left an audit entry'
   Write-Host 'PASS: findings, reviews, turnover, lessons and memory'
+
+  # ---- audit chain: the CLI's writes are chained, verify passes, and an edit to the store is caught ----
+  $av=(Expect @('audit','verify','--json') 0 'audit verify').Json.result
+  Assert-True ($av.valid -eq $true -and $av.chained -ge 6 -and $av.entries -ge $av.chained) 'the CLI''s own writes form a valid hash chain'
+  $data2=Join-Path $sandbox 'data-tampered'
+  New-Item -ItemType Directory -Force -Path $data2|Out-Null
+  Copy-Item -LiteralPath (Join-Path $data 'store.v2.dpapi') -Destination $data2
+  Add-Type -AssemblyName System.Security
+  $store2=Join-Path $data2 'store.v2.dpapi'
+  $plain=[Security.Cryptography.ProtectedData]::Unprotect([IO.File]::ReadAllBytes($store2),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser)
+  $state2=[Text.Encoding]::UTF8.GetString($plain)|ConvertFrom-Json
+  $state2.audit[0].target='rewritten-target'
+  [IO.File]::WriteAllBytes($store2,[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $state2 -Depth 70 -Compress)),$null,[Security.Cryptography.DataProtectionScope]::CurrentUser))
+  $bad=Run @('audit','verify','--json') $data2
+  Assert-True ($bad.Code -eq 1 -and $bad.Json.ok -eq $false -and $bad.Json.usage -eq $false -and $bad.Json.error -match 'broken at entry 1') 'an edited audit entry makes audit verify exit 1 and name the entry'
+  Write-Host 'PASS: audit verify (valid chain from the CLI''s own writes, edited entry detected)'
 
   # ---- dry run, --out, export ----
   $before=@((Expect @('log','list','--json') 0 'list').Json.result.logs).Count
