@@ -48,6 +48,7 @@ In `--json` mode errors go to standard output as the `ok:false` object. Otherwis
 | Command | Mirrors | Inputs | Notes |
 | --- | --- | --- | --- |
 | `status show` | `GET /api/state` | | Counts, data folder, whether a server is running. |
+| `audit verify` | `GET /api/audit/verify` | | Checks the hash chain of the audit trail. Exit 1 with the first broken entry if it does not hold. Tamper-evident, not tamper-proof: it cannot see a store that was rewritten as a whole. |
 | `log list` | `GET /api/state` | | |
 | `log show` | `GET /api/state` | `--id` | Analysis summary, findings and open conditions. |
 | `log import` | `POST /api/import` | `--file`, `--name`, `--watch`, `--format auto\|text\|csv\|json`, `--interval` | Parses with the engine port. 1.5 MB and 10,000 entries at most, like the app. |
@@ -80,4 +81,3 @@ A command that writes refuses to run while an Eight Bells server is running for 
 ## Limits
 
 - The engine port reads text, CSV and JSON. Other formats are imported through the browser.
-- The CLI does not check the audit chain; see the audit-trail PR for `GET /api/audit/verify`.

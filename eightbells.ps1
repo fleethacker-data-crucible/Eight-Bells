@@ -110,6 +110,12 @@ try{
       'status show'{
         $result=[ordered]@{dataDir=$dataDir;storeExists=(Test-Path -LiteralPath (Join-Path $dataDir 'store.v2.dpapi'));serverRunning=(Test-EbServerRunning $dataDir);logs=@($state.logs).Count;lessons=@($state.lessons).Count;reviews=@($state.reviews).Count;audit=@($state.audit).Count}
       }
+      'audit verify'{
+        # Test-EightBellsAuditChain comes from EightBells-Audit.ps1, the same code the server's /api/audit/verify route runs.
+        $chain=Test-EightBellsAuditChain @($state.audit)
+        if(-not $chain.ok){throw ('The audit chain is broken at entry '+$chain.brokenAt+': '+$chain.reason)}
+        $result=[ordered]@{valid=$true;entries=$chain.entries;chained=$chain.chained;legacy=$chain.legacy}
+      }
       'log list'{
         $list=@(@($state.logs)|ForEach-Object {[ordered]@{id=$_.id;name=$_.name;watch=$_.watch;format=$_.format;imported=$_.imported;entries=@($_.entries).Count;findings=@($_.analysis.findings).Count;open=@($_.analysis.open).Count}})
         $result=[ordered]@{logs=[object[]]$list}
