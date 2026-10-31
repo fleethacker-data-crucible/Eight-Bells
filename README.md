@@ -68,6 +68,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Turnover | Offline deterministic draft with source line references, suspected unresolved conditions |
 | Memory | Local searchable log/lesson store, recurring equipment candidates across separate logs |
 | AI | Manually configured OpenAI-compatible chat endpoint, optional key held **in process memory only** |
+| Schema (library) | `web/schema.js`: stable content-derived IDs, source/entry/finding records with provenance, and the lesson lifecycle (draft, in-review, approved, rejected, superseded, expired) with a two-person rule. A tested library; **not yet stored by the server**, and a reviewer is a typed name, not a verified identity |
 | Privacy | No remote calls unless manually configured and explicitly authorized for each AI request |
 | Diagnostics | Local service logs (excluding log content and AI keys), GUI diagnostics and status |
 | Testing | Node parsing QA regression tests and Windows PowerShell 5.1 authenticated service smoke test |

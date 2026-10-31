@@ -35,6 +35,12 @@ jobs:
           $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
           node tests\lifecycle.test.js
           if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
+      - name: Test schema, stable IDs and lesson lifecycle
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
+          node tests\schema.test.js
+          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
       - name: End-to-end Windows service smoke
         shell: powershell
         run: .\tests\Smoke-Test.ps1
