@@ -1,0 +1,5 @@
+timestamp,equipment,reading_type,value,unit,description
+0800,Pump A,discharge pressure,49,psi,Routine reading
+0815,Fan 2,motor temperature,200,F,Routine reading
+0900,Pump A,discharge pressure,42,kPa,Routine reading
+1100,Pump A,discharge pressure,41,psi,Routine reading

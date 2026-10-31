@@ -1,0 +1,8 @@
+# Eight Bells fleet-gate allowlist (format: see the org default allowlist in the comms repo).
+# WHY: Lazarette 5 still ships its engine entry file under its previous name, and its documented contract
+# (Lazarette docs/INTEGRATION.md) has callers dot-source that file, so EightBells-Vault.ps1 has to quote the file name.
+# Only lines that quote that file name are listed (the bracket keeps this line from matching itself); there is no
+# general retired-name exception. Same approach as the PacketRat allowlist. Remove this file when Lazarette ships its
+# entry file under the current name.
+# APPROVAL: not yet approved by the repo owner. Added to turn the gate green on a draft PR; confirm or reject it in review.
+line:A[r]c\.ps1

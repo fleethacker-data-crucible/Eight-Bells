@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev,[switch]$Stay,[switch]$Replace,[int]$LauncherPid=0,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
+param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev,[switch]$Stay,[switch]$Replace,[switch]$Lazarette,[int]$LauncherPid=0,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
 $ErrorActionPreference='Stop'
 # Launcher-style options (Launch-EightBells.bat --replace / --stay) arrive as remaining arguments.
 foreach($a in @($Rest)){
@@ -127,6 +127,16 @@ $script:running=$true
 $script:autoStop=((Test-EightBellsAutoStopEnabled) -and !$Stay)
 $script:tabs=@{}
 $script:startedAt=[DateTime]::UtcNow
+# Optional: read the AI key from Lazarette at start (EightBells-Vault.ps1). Off unless -Lazarette or EIGHTBELLS_LAZARETTE=1.
+# Only the item NAME is configured (EIGHTBELLS_LAZARETTE_ITEM_AI, default ai-api-key); the secret stays in memory.
+. (Join-Path $root 'EightBells-Vault.ps1')
+$script:vaultKey=''
+$script:vaultItem=Get-EnvSetting 'LAZARETTE_ITEM_AI'
+if([string]::IsNullOrEmpty($script:vaultItem)){$script:vaultItem='ai-api-key'}
+if($Lazarette -or (Get-EnvSetting 'LAZARETTE') -eq '1'){
+  try{$script:vaultKey=Get-EightBellsVaultSecret -ItemName $script:vaultItem -Interactive:(!$Background -and !$testMode)}
+  catch{Write-Warning ('Lazarette key not loaded: '+$_.Exception.Message);Diag ('Lazarette key not loaded: '+$_.Exception.Message)}
+}
 # If a browser was opened but never sent a heartbeat (closed before loading, or failed to open), stop after 2 minutes.
 $script:firstContactMs=if($NoBrowser){0}else{120000}
 $script:ai=@{endpoint='';model='';key='';router=$false}
@@ -202,6 +212,7 @@ $script:uiFiles=@{
   '/adapters.js'='web/adapters.js'
   '/'='web/index.html';'/engine.js'='web/engine.js';'/lifecycle.js'='web/lifecycle.js';'/app.js'='web/app.js';'/styles.css'='web/styles.css'
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
+  '/profiles.js'='web/profiles.js'
   '/halyard-export.js'='web/halyard-export.js'
   '/pdf.js'='web/pdf.js'
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
@@ -298,6 +309,10 @@ function Process-Http($req,$stream){
     if(![Uri]::TryCreate($endpoint,[UriKind]::Absolute,[ref]$uri)){Reject $stream 400 'Invalid endpoint';return}
     if($uri.Scheme -ne 'https' -and !(($uri.Scheme -eq 'http') -and ($uri.Host -in @('127.0.0.1','localhost')))){Reject $stream 400 'Only HTTPS or local HTTP AI endpoints are allowed';return}
     if($uri.UserInfo){Reject $stream 400 'Credentials in endpoint are prohibited';return}
+    if($obj.useVault -is [bool] -and $obj.useVault){
+      if(!$script:vaultKey){Reject $stream 400 'No key was read from Lazarette at start. Start Eight Bells with -Lazarette from a visible console (EightBells-CLI.bat -Lazarette) and unlock the vault.';return}
+      Add-Member -InputObject $obj -NotePropertyName key -NotePropertyValue $script:vaultKey -Force
+    }
     $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key;router=$false}
     Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
   }
