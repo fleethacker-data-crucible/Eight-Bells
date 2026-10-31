@@ -50,7 +50,6 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 - `readings.csv` — actual CSV header/row parsing.
 - `elog_export.json` — actual JSON event parsing.
 - `noisy_ocr.txt` — transcription corruption.
-- `form_watch.html` — printable simulated paper form, suitable for a synthetic photograph.
 
 ## Implemented in v2
 
