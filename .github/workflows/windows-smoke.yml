@@ -56,3 +56,9 @@ jobs:
       - name: End-to-end Windows service smoke
         shell: powershell
         run: .\tests\Smoke-Test.ps1
+      - name: CLI and API parity
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Cli-Test.ps1
+          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
