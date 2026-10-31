@@ -29,6 +29,12 @@ jobs:
           $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
           node tests\engine.test.js
           if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
+      - name: Test Halyard lesson export
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'   # stderr output is not a failure; the exit code decides
+          node tests\halyard-export.test.js
+          if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }   # also catches a command that never ran
       - name: Test browser tab lifecycle (heartbeat and leaving beacon)
         shell: powershell
         run: |
