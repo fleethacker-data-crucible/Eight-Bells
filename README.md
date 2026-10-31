@@ -61,7 +61,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Storage | User-scoped Windows DPAPI encrypted store under `%LOCALAPPDATA%\EightBells\store.v2.dpapi` (copied forward once from `%LOCALAPPDATA%\LogHawk` if present) |
 | Formats | Text/LOG/Markdown, structured CSV and JSON, pasted transcriptions |
 | Images | Local preview; manual transcript or explicit opt-in remote vision transcription (PNG/JPEG/WebP, 2MB max) |
-| PDF | **Manual transcription only; no PDF extraction engine** |
+| PDF | Reads the **text layer** of digital PDFs (`web/pdf.js`, pure script, no install): classic objects, page order, Flate streams, single-byte fonts. **It is not OCR**: a scanned PDF gives no text and says so. Encrypted PDFs, object streams, Type0/ToUnicode fonts and image filters are refused or warned, never guessed. Extracted text is unverified until you check it. Tested on tiny synthetic PDFs only, not on PDFs from real systems |
 | Quality | Timestamp regression, configurable reading interval gaps, copy-forward candidates, missing dispositions |
 | Evidence | Source line references for entries and quality findings |
 | Review | Append-only-in-application reviewer dispositions, explanations and timestamps |

@@ -13,6 +13,7 @@ ALL CONTENT IS FICTIONAL. No real ship, personnel, equipment identifiers, operat
 - readings.csv — structured tabular data (current importer treats as text, not typed CSV)
 - elog_export.json — structured export (current importer treats as text, not JSON records)
 - noisy_ocr.txt — intentionally corrupted OCR-like transcript
+- synthetic_watch.pdf — tiny synthetic text-layer PDF (made by tools/make-sample-pdf.js); its text is read, not OCR'd
 
 ## Future format adapters / parser regression fixtures
 - form_watch.html — printable simulated paper log; can print to PDF or photograph to exercise future OCR
