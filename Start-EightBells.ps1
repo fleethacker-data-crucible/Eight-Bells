@@ -200,6 +200,7 @@ function Read-Http($stream){
 $script:uiFiles=@{
   '/'='web/index.html';'/engine.js'='web/engine.js';'/lifecycle.js'='web/lifecycle.js';'/app.js'='web/app.js';'/styles.css'='web/styles.css'
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
+  '/halyard-export.js'='web/halyard-export.js'
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
   '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'
   '/brand/favicon.ico'='web/brand/favicon.ico';'/favicon.ico'='web/brand/favicon.ico'
