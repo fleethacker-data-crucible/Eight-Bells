@@ -15,6 +15,7 @@ foreach($a in @($Rest)){
 Add-Type -AssemblyName System.Security -ErrorAction Stop
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $root 'EightBells-Process.ps1')
+. (Join-Path $root 'EightBells-Audit.ps1')
 # EIGHTBELLS_* environment variables are read first; the former LOGHAWK_* names remain a fallback.
 function Get-EnvSetting([string]$name){
   $value=[Environment]::GetEnvironmentVariable('EIGHTBELLS_'+$name)
@@ -168,10 +169,7 @@ function Save-State($state){
     else{[IO.File]::Move($tmp,$store)}
   }finally{Remove-Item $tmp -Force -ErrorAction SilentlyContinue}
 }
-function Audit($s,[string]$action,[string]$target){
-  $s.audit=@($s.audit)+@(@{at=[DateTime]::UtcNow.ToString('o');action=$action;target=$target})
-  if(@($s.audit).Count -gt 2000){$s.audit=@($s.audit|Select-Object -Last 2000)}
-}
+function Audit($s,[string]$action,[string]$target){Add-EightBellsAuditEvent $s $action $target}
 function J($o){return (ConvertTo-Json -InputObject $o -Depth 70 -Compress)}
 function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){ReplyBytes $stream $status ([Text.Encoding]::UTF8.GetBytes($body)) $mime}
 function ReplyBytes($stream,[int]$status,[byte[]]$data,[string]$mime){
@@ -214,7 +212,9 @@ $script:uiFiles=@{
   '/adapters.js'='web/adapters.js'
   '/'='web/index.html';'/engine.js'='web/engine.js';'/lifecycle.js'='web/lifecycle.js';'/app.js'='web/app.js';'/styles.css'='web/styles.css'
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
+  '/profiles.js'='web/profiles.js'
   '/halyard-export.js'='web/halyard-export.js'
+  '/pdf.js'='web/pdf.js'
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
   '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'
   '/brand/favicon.ico'='web/brand/favicon.ico';'/favicon.ico'='web/brand/favicon.ico'
@@ -257,6 +257,7 @@ function Process-Http($req,$stream){
     $lines=if(Test-Path $log){@(Get-Content -LiteralPath $log -Tail 100 | ForEach-Object {[string]$_})}else{@()}
     Reply $stream 200 (J @{lines=$lines;storage='Windows CurrentUser DPAPI';aiConfigured=[bool]$script:ai.endpoint});return
   }
+  if($req.method -eq 'GET' -and $path -eq '/api/audit/verify'){Reply $stream 200 (J (Test-EightBellsAuditChain @((Load-State).audit)));return}
   if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
   try{$obj=$req.body|ConvertFrom-Json}catch{Reject $stream 400 'Malformed JSON';return}
   if($path -eq '/api/import'){

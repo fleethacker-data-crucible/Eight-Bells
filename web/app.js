@@ -100,7 +100,7 @@ async function markLesson(id){if(!confirm('Mark lesson locally reviewed? This is
 function viewPreview(){
  const text=el('logText').value,fmt=el('format').value;
  try{
-  let p=window.EightBellsAdapters.parse(text,fmt),a=E.analyze(p.entries,{intervalMinutes:Number(el('interval').value)});
+  let p=window.EightBellsAdapters.parse(text,fmt),a=window.EightBellsProfiles.analyzeWithProfile(p.entries,activeProfile,{intervalMinutes:Number(el('interval').value)});
   el('previewStatus').textContent=p.entries.length+' entries · '+a.findings.length+' advisory findings · format: '+p.format;
   el('previewEntries').innerHTML=p.entries.slice(0,10).map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unspecified time')+' · '+escapeHTML(e.equipment||'No entity')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('');
   return {parsed:p,analysis:a};
@@ -111,7 +111,7 @@ async function importLog(){
  if(!name||!content)throw Error('Provide a title and verified text.');
  const r=viewPreview();if(!r)throw Error('Correct source parsing errors before importing.');
  const file=el('importFile').files[0];
- await api('/api/import',{name,watch:el('watchType').value,content,sourceType:file&&/image|pdf/.test(file.type)?'manual-transcription':'digital-text',format:r.parsed.format,entries:r.parsed.entries,analysis:r.analysis});
+ await api('/api/import',{name,watch:el('watchType').value,content,sourceType:file&&/image/.test(file.type)?'manual-transcription':file&&/pdf/.test(file.type)?'pdf-text-layer':'digital-text',format:r.parsed.format,entries:r.parsed.entries,analysis:r.analysis});
  await refresh();visit('overview');notify('Encrypted log import completed.');
 }
 async function chooseFile(){
@@ -122,7 +122,14 @@ async function chooseFile(){
  const image=/^image\//.test(file.type)||/\.(png|jpg|jpeg|webp|tif|tiff)$/i.test(file.name);
  const pdf=/\.pdf$/i.test(file.name);
  if(image){previewUrl=URL.createObjectURL(file);el('imagePreview').src=previewUrl;el('previewWrap').classList.remove('hidden');el('visionActions').classList.remove('hidden');el('logText').value='';notify('Image preview ready. Enter a verified transcript; no OCR is claimed.');}
- else if(pdf){el('logText').value='';notify('PDF requires manual text transcription in this build.',true);}
+ else if(pdf){
+  el('logText').value='';
+  if(file.size>window.EightBellsPdf.MAX_BYTES)throw Error('The PDF is larger than 5 MB.');
+  const r=await window.EightBellsPdf.extractText(new Uint8Array(await file.arrayBuffer()));
+  el('logText').value=r.text;
+  const warn=r.warnings.join(' ');
+  notify(r.text?'PDF text layer read. It is unverified: check every line against the document before import.'+(warn?' '+warn:''):(warn||'No text was found in this PDF.'),!r.text);
+ }
  else{if(file.size>1500000)throw Error('File exceeds the 1.5MB text limit.');el('logText').value=await file.text();notify('Text file loaded for verification.');}
  viewPreview();
 }
@@ -197,6 +204,20 @@ async function refreshDiagnostics(){
 function safe(fn){return async()=>{try{await fn();}catch(e){notify(e.message,true);}};}
 bind('reloadBtn','click',safe(refresh));bind('importFile','change',safe(chooseFile));bind('visionTranscribe','click',safe(transcribeVision));bind('analyzeBtn','click',safe(importLog));
 bind('logText','input',viewPreview);bind('format','change',viewPreview);bind('interval','change',viewPreview);
+// Watch-profile rules (web/profiles.js): an optional JSON file the user writes; findings from it are advisory.
+let activeProfile=null;
+async function loadProfile(){
+ const file=el('profileFile').files[0];
+ if(!file){activeProfile=null;el('profileStatus').textContent='No profile loaded.';viewPreview();return;}
+ let profile;
+ const reject=message=>{activeProfile=null;el('profileFile').value='';el('profileStatus').textContent='Profile rejected. No reading rules are in use.';viewPreview();throw Error(message);};
+ try{profile=JSON.parse(await file.text());}catch(e){reject('The profile is not valid JSON.');}
+ const errors=window.EightBellsProfiles.validate(profile);
+ if(errors.length)reject(errors[0]);
+ activeProfile=profile;el('profileStatus').textContent='Profile in use: '+profile.label;viewPreview();
+ notify('Reading rules loaded. Findings from them are advisory prompts to check the record.');
+}
+bind('profileFile','change',safe(loadProfile));
 bind('sourceSearch','input',renderSources);bind('qualityLog','change',()=>{chosenFinding=null;renderQuality();});
 bind('turnLog','change',syncTurnover);
 bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',renderMemory);

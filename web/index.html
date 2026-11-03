@@ -37,13 +37,14 @@
   </section>
   <section id="ingest" class="view"><div class="section-header"><div><h2>Log Ingestion Studio</h2><p>Bring in typed files, paste a transcript, or review an image while entering text.</p></div></div>
     <div class="twocol unequal"><article class="panel fl-card"><h3>1 · Select source</h3><label for="importFile">Source file</label><input class="fl-input" id="importFile" type="file" accept=".txt,.log,.md,.csv,.json,.jsonl,.tsv,.xml,.png,.jpg,.jpeg,.webp,.tiff,.tif,.pdf">
-    <p class="hint">TXT, LOG, Markdown, CSV, JSON, JSON Lines, tab/semicolon/pipe tables and XML e-log exports are parsed directly. Image and PDF files need a verified transcript in this build; the PDF itself is not read.</p>
+    <p class="hint">TXT, LOG, Markdown, CSV, JSON, JSON Lines, tab/semicolon/pipe tables and XML e-log exports are parsed directly. Image files need a verified transcript. PDF files are read for their text layer (this is not OCR, so a scanned PDF gives no text); check the extracted text before import.</p>
     <div id="previewWrap" class="preview hidden"><img id="imagePreview" alt="Selected log source preview"><p class="hint">Use the image as a transcription reference; the image itself is not stored in this version.</p></div>
     <div id="visionActions" class="hidden"><label class="check"><input type="checkbox" id="visionConsent"> I authorize sending this synthetic image to the configured, approved vision model for transcription.</label><button class="outline full fl-btn fl-btn--secondary" id="visionTranscribe"><span data-icon="scan"></span>Transcribe image with AI vision</button><p class="hint">The transcript requires manual review. No image is retained by Eight Bells, but the AI provider may process submitted content under its own policies.</p></div>
     <label for="logName">Log title</label><input class="fl-input" id="logName" placeholder="Auxiliary Engineering / 0800–1200">
     <label for="watchType">Watch profile</label><select class="fl-input" id="watchType"><option>Engineering</option><option>Bridge / Quarterdeck</option><option>Damage Control</option><option>Security</option><option>Communications</option><option>Other</option></select>
     <label for="format">Parser</label><select class="fl-input" id="format"><option value="auto">Detect automatically</option><option value="text">Plain text / transcript</option><option value="csv">CSV table</option><option value="json">JSON export</option><option value="jsonl">JSON Lines (one event per line)</option><option value="delimited">Delimited table (tab, semicolon or pipe)</option><option value="xml">XML e-log export</option></select>
     <label for="interval">Required reading interval (optional)</label><select class="fl-input" id="interval"><option value="0">Not configured</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">60 minutes</option></select>
+    <label for="profileFile">Reading rules (optional, JSON profile)</label><input class="fl-input" id="profileFile" type="file" accept=".json"><p id="profileStatus" class="hint">No profile loaded. A profile lists the readings a watch must record (range, unit, interval). You write it; Eight Bells ships no limits. See samples/profile_engineering_synthetic.json.</p>
     <button id="analyzeBtn" class="accent full fl-btn fl-btn--primary">Analyze and securely import <span data-icon="arrowRight"></span></button></article>
     <article class="panel fl-card"><h3>2 · Review source text</h3><label for="logText">Editable source text or verified transcription</label><textarea id="logText" class="fl-input source-editor" spellcheck="false" placeholder="0800 Watch assumed&#10;0830 Pump B abnormal vibration observed&#10;0845 Supervisor notified"></textarea>
     <div id="dictation" class="stack"><label class="check"><input type="checkbox" id="dictateConsent"> I approve using this browser's on-device speech recognition for this dictation.</label><div class="inline"><button id="dictateBtn" class="outline fl-btn fl-btn--secondary" type="button">Start dictation</button><button id="dictateStop" class="outline fl-btn fl-btn--secondary" type="button">Stop</button></div><p id="dictateHint" class="hint">Dictated text is added to the source text above and must be checked before import. If dictation is unavailable here, type or paste the log, or use Windows voice typing (Win+H).</p></div>
@@ -80,8 +81,10 @@
  <span class="version">Eight Bells v2 · training data only</span>
 </footer>
 </div>
+<script src="/pdf.js"></script>
 <script src="/engine.js"></script>
 <script src="/adapters.js"></script>
+<script src="/profiles.js"></script>
 <script src="/halyard-export.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
 <script src="/voice.js"></script>
 </body></html>

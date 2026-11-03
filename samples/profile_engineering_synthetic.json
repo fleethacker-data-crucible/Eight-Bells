@@ -1,0 +1,8 @@
+{
+  "label": "Synthetic engineering profile (NOT an approved requirement)",
+  "intervalMinutes": 60,
+  "rules": [
+    { "equipment": "Pump A", "reading": "discharge pressure", "unit": "psi", "min": 38, "max": 46, "intervalMinutes": 60, "required": true },
+    { "equipment": "Fan 2", "reading": "motor temperature", "unit": "F", "min": 80, "max": 180, "required": false }
+  ]
+}
