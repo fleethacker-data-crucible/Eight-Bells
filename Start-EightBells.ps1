@@ -1,5 +1,5 @@
 [CmdletBinding(PositionalBinding=$false)]
-param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev,[switch]$Stay,[switch]$Replace,[int]$LauncherPid=0,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
+param([int]$Port=0,[switch]$NoBrowser,[switch]$Background,[switch]$Diagnostics,[string]$TestSessionToken='',[switch]$LocalDev,[switch]$Stay,[switch]$Replace,[switch]$Lazarette,[int]$LauncherPid=0,[Parameter(ValueFromRemainingArguments=$true)][string[]]$Rest)
 $ErrorActionPreference='Stop'
 # Launcher-style options (Launch-EightBells.bat --replace / --stay) arrive as remaining arguments.
 foreach($a in @($Rest)){
@@ -15,6 +15,7 @@ foreach($a in @($Rest)){
 Add-Type -AssemblyName System.Security -ErrorAction Stop
 $root=Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $root 'EightBells-Process.ps1')
+. (Join-Path $root 'EightBells-Audit.ps1')
 # EIGHTBELLS_* environment variables are read first; the former LOGHAWK_* names remain a fallback.
 function Get-EnvSetting([string]$name){
   $value=[Environment]::GetEnvironmentVariable('EIGHTBELLS_'+$name)
@@ -126,6 +127,16 @@ $script:running=$true
 $script:autoStop=((Test-EightBellsAutoStopEnabled) -and !$Stay)
 $script:tabs=@{}
 $script:startedAt=[DateTime]::UtcNow
+# Optional: read the AI key from Lazarette at start (EightBells-Vault.ps1). Off unless -Lazarette or EIGHTBELLS_LAZARETTE=1.
+# Only the item NAME is configured (EIGHTBELLS_LAZARETTE_ITEM_AI, default ai-api-key); the secret stays in memory.
+. (Join-Path $root 'EightBells-Vault.ps1')
+$script:vaultKey=''
+$script:vaultItem=Get-EnvSetting 'LAZARETTE_ITEM_AI'
+if([string]::IsNullOrEmpty($script:vaultItem)){$script:vaultItem='ai-api-key'}
+if($Lazarette -or (Get-EnvSetting 'LAZARETTE') -eq '1'){
+  try{$script:vaultKey=Get-EightBellsVaultSecret -ItemName $script:vaultItem -Interactive:(!$Background -and !$testMode)}
+  catch{Write-Warning ('Lazarette key not loaded: '+$_.Exception.Message);Diag ('Lazarette key not loaded: '+$_.Exception.Message)}
+}
 # If a browser was opened but never sent a heartbeat (closed before loading, or failed to open), stop after 2 minutes.
 $script:firstContactMs=if($NoBrowser){0}else{120000}
 $script:ai=@{endpoint='';model='';key='';router=$false}
@@ -158,10 +169,7 @@ function Save-State($state){
     else{[IO.File]::Move($tmp,$store)}
   }finally{Remove-Item $tmp -Force -ErrorAction SilentlyContinue}
 }
-function Audit($s,[string]$action,[string]$target){
-  $s.audit=@($s.audit)+@(@{at=[DateTime]::UtcNow.ToString('o');action=$action;target=$target})
-  if(@($s.audit).Count -gt 2000){$s.audit=@($s.audit|Select-Object -Last 2000)}
-}
+function Audit($s,[string]$action,[string]$target){Add-EightBellsAuditEvent $s $action $target}
 function J($o){return (ConvertTo-Json -InputObject $o -Depth 70 -Compress)}
 function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){ReplyBytes $stream $status ([Text.Encoding]::UTF8.GetBytes($body)) $mime}
 function ReplyBytes($stream,[int]$status,[byte[]]$data,[string]$mime){
@@ -206,6 +214,7 @@ $script:uiFiles=@{
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
   '/profiles.js'='web/profiles.js'
   '/halyard-export.js'='web/halyard-export.js'
+  '/pdf.js'='web/pdf.js'
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
   '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'
   '/brand/favicon.ico'='web/brand/favicon.ico';'/favicon.ico'='web/brand/favicon.ico'
@@ -248,6 +257,7 @@ function Process-Http($req,$stream){
     $lines=if(Test-Path $log){@(Get-Content -LiteralPath $log -Tail 100 | ForEach-Object {[string]$_})}else{@()}
     Reply $stream 200 (J @{lines=$lines;storage='Windows CurrentUser DPAPI';aiConfigured=[bool]$script:ai.endpoint});return
   }
+  if($req.method -eq 'GET' -and $path -eq '/api/audit/verify'){Reply $stream 200 (J (Test-EightBellsAuditChain @((Load-State).audit)));return}
   if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
   try{$obj=$req.body|ConvertFrom-Json}catch{Reject $stream 400 'Malformed JSON';return}
   if($path -eq '/api/import'){
@@ -299,6 +309,10 @@ function Process-Http($req,$stream){
     if(![Uri]::TryCreate($endpoint,[UriKind]::Absolute,[ref]$uri)){Reject $stream 400 'Invalid endpoint';return}
     if($uri.Scheme -ne 'https' -and !(($uri.Scheme -eq 'http') -and ($uri.Host -in @('127.0.0.1','localhost')))){Reject $stream 400 'Only HTTPS or local HTTP AI endpoints are allowed';return}
     if($uri.UserInfo){Reject $stream 400 'Credentials in endpoint are prohibited';return}
+    if($obj.useVault -is [bool] -and $obj.useVault){
+      if(!$script:vaultKey){Reject $stream 400 'No key was read from Lazarette at start. Start Eight Bells with -Lazarette from a visible console (EightBells-CLI.bat -Lazarette) and unlock the vault.';return}
+      Add-Member -InputObject $obj -NotePropertyName key -NotePropertyValue $script:vaultKey -Force
+    }
     $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key;router=$false}
     Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
   }
