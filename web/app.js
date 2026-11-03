@@ -100,7 +100,7 @@ async function markLesson(id){if(!confirm('Mark lesson locally reviewed? This is
 function viewPreview(){
  const text=el('logText').value,fmt=el('format').value;
  try{
-  let p=window.EightBellsAdapters.parse(text,fmt),a=E.analyze(p.entries,{intervalMinutes:Number(el('interval').value)});
+  let p=window.EightBellsAdapters.parse(text,fmt),a=window.EightBellsProfiles.analyzeWithProfile(p.entries,activeProfile,{intervalMinutes:Number(el('interval').value)});
   el('previewStatus').textContent=p.entries.length+' entries · '+a.findings.length+' advisory findings · format: '+p.format;
   el('previewEntries').innerHTML=p.entries.slice(0,10).map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unspecified time')+' · '+escapeHTML(e.equipment||'No entity')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('');
   return {parsed:p,analysis:a};
@@ -179,7 +179,7 @@ function download(name,data,mime){
  const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 async function configureAI(clear){
- let data=clear?{endpoint:'',model:'',key:''}:{endpoint:el('endpoint').value.trim(),model:el('model').value.trim(),key:el('aiKey').value};
+ let data=clear?{endpoint:'',model:'',key:''}:{endpoint:el('endpoint').value.trim(),model:el('model').value.trim(),key:el('aiKey').value,useVault:el('aiVault').checked};
  await api('/api/ai/config',data);el('aiKey').value='';notify(clear?'AI configuration cleared.':'AI session provider configured.');
 }
 async function runAI(){
@@ -204,6 +204,20 @@ async function refreshDiagnostics(){
 function safe(fn){return async()=>{try{await fn();}catch(e){notify(e.message,true);}};}
 bind('reloadBtn','click',safe(refresh));bind('importFile','change',safe(chooseFile));bind('visionTranscribe','click',safe(transcribeVision));bind('analyzeBtn','click',safe(importLog));
 bind('logText','input',viewPreview);bind('format','change',viewPreview);bind('interval','change',viewPreview);
+// Watch-profile rules (web/profiles.js): an optional JSON file the user writes; findings from it are advisory.
+let activeProfile=null;
+async function loadProfile(){
+ const file=el('profileFile').files[0];
+ if(!file){activeProfile=null;el('profileStatus').textContent='No profile loaded.';viewPreview();return;}
+ let profile;
+ const reject=message=>{activeProfile=null;el('profileFile').value='';el('profileStatus').textContent='Profile rejected. No reading rules are in use.';viewPreview();throw Error(message);};
+ try{profile=JSON.parse(await file.text());}catch(e){reject('The profile is not valid JSON.');}
+ const errors=window.EightBellsProfiles.validate(profile);
+ if(errors.length)reject(errors[0]);
+ activeProfile=profile;el('profileStatus').textContent='Profile in use: '+profile.label;viewPreview();
+ notify('Reading rules loaded. Findings from them are advisory prompts to check the record.');
+}
+bind('profileFile','change',safe(loadProfile));
 bind('sourceSearch','input',renderSources);bind('qualityLog','change',()=>{chosenFinding=null;renderQuality();});
 bind('turnLog','change',syncTurnover);
 bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',renderMemory);
