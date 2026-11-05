@@ -72,6 +72,7 @@ Browse the synthetic fixtures under [samples](samples/README.md).
 | Review | Append-only-in-application reviewer dispositions, explanations and timestamps |
 | Turnover | Offline deterministic draft with source line references, suspected unresolved conditions |
 | Memory | Local searchable log/lesson store, recurring equipment candidates across separate logs |
+| Semaphore export | **Export for Semaphore (CSV)** on the Command Center writes one row per watch: logs, open conditions, findings, draft and reviewed lessons. Counts only; no log text. Semaphore reads it through Data > Add data like any CSV. Checked by tests on synthetic data |
 | Halyard hand-off | Reviewed lessons export as `STORY ::` proposals (title, `halyard-meta` fence, acceptance criteria, tasks, labels) in a JSON file for Halyard's sandbox review. Sizing stays `TBD`; the theme and parent Feature are defaults (`THEME-watch-lessons`, `FEATURE-lessons-follow-up`) to be set to real ids in Halyard. Checked against Halyard's work-item model doc, not against a live Halyard |
 | AI | Manually configured OpenAI-compatible chat endpoint, optional key held **in process memory only** |
 | Schema (library) | `web/schema.js`: stable content-derived IDs, source/entry/finding records with provenance, and the lesson lifecycle (draft, in-review, approved, rejected, superseded, expired) with a two-person rule. A tested library; **not yet stored by the server**, and a reviewer is a typed name, not a verified identity |
