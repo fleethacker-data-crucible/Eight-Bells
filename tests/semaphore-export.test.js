@@ -34,3 +34,10 @@ const parsed=engine.csv(csv);
 assert.strictEqual(parsed[1][0],'Bridge, "night"');
 assert.strictEqual(parsed.length,2);
 console.log('PASS: Semaphore data-source export (per-watch counts, lesson status, CSV quoting, empty input)');
+
+// The page has the button and wires it to these two functions (the export was a tested library before it had a button).
+const fs=require('fs'),path=require('path');
+const html=fs.readFileSync(path.join(__dirname,'..','web','index.html'),'utf8'),app=fs.readFileSync(path.join(__dirname,'..','web','app.js'),'utf8');
+assert(html.includes('id="semaphoreExport"'),'The Command Center has an Export for Semaphore button');
+assert(/bind\('semaphoreExport','click'/.test(app)&&app.includes('E.semaphoreCsv(rows)')&&app.includes('EightBells-semaphore.csv'),'The button writes the CSV from semaphoreRows and semaphoreCsv');
+console.log('PASS: Semaphore export button is on the page and uses the tested rows and CSV');

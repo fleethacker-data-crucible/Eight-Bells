@@ -130,6 +130,7 @@ $script:startedAt=[DateTime]::UtcNow
 # Optional: read the AI key from Lazarette at start (EightBells-Vault.ps1). Off unless -Lazarette or EIGHTBELLS_LAZARETTE=1.
 # Only the item NAME is configured (EIGHTBELLS_LAZARETTE_ITEM_AI, default ai-api-key); the secret stays in memory.
 . (Join-Path $root 'EightBells-Vault.ps1')
+. (Join-Path $root 'EightBells-Credential.ps1')
 $script:vaultKey=''
 $script:vaultItem=Get-EnvSetting 'LAZARETTE_ITEM_AI'
 if([string]::IsNullOrEmpty($script:vaultItem)){$script:vaultItem='ai-api-key'}
@@ -139,7 +140,7 @@ if($Lazarette -or (Get-EnvSetting 'LAZARETTE') -eq '1'){
 }
 # If a browser was opened but never sent a heartbeat (closed before loading, or failed to open), stop after 2 minutes.
 $script:firstContactMs=if($NoBrowser){0}else{120000}
-$script:ai=@{endpoint='';model='';key='';router=$false}
+$script:ai=@{endpoint='';model='';key='';router=$false;local=$true}
 # Opt-in intelligence router (Fairlead). Off unless a client asks for it; the router holds the provider keys, so no key is sent.
 $script:routerUrl=Get-EnvSetting 'FAIRLEAD_URL'
 if([string]::IsNullOrEmpty($script:routerUrl)){$script:routerUrl='http://127.0.0.1:8776/v1/chat/completions'}
@@ -171,6 +172,28 @@ function Save-State($state){
 }
 function Audit($s,[string]$action,[string]$target){Add-EightBellsAuditEvent $s $action $target}
 function J($o){return (ConvertTo-Json -InputObject $o -Depth 70 -Compress)}
+# Headers for a model call. Manual mode: the typed or vault key. Router mode: this app's own Fairlead key, read from
+# Credential Manager for this call only (Fairlead/EightBells), and the local-only header unless the user chose otherwise.
+function Get-EightBellsModelHeaders{
+  $h=@{}
+  if($script:ai.router){
+    $k=Get-EightBellsFairleadKey -AllowTestKey:$testMode
+    if($k){$h['Authorization']='Bearer '+$k}
+    if($script:ai.local){$h['X-Fairlead-Privacy']='local'}
+  }elseif($script:ai.key){$h['Authorization']='Bearer '+$script:ai.key}
+  return $h
+}
+# Plain-language reason for a failed model call. Never includes a key or any log text.
+function Get-EightBellsModelFailure($err,[string]$what){
+  $code=0;try{if($err.Exception.Response){$code=[int]$err.Exception.Response.StatusCode}}catch{}
+  if($script:ai.router){
+    if($code -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, then try again.'}
+    if($code -eq 0){return 'Fairlead did not answer on this PC. Start Fairlead, then try again.'}
+    if($script:ai.local){return $what+' failed through Fairlead. With local-only on, Fairlead needs a local model; switch local-only off for synthetic data to use a cloud model.'}
+    return $what+' failed through Fairlead (HTTP '+$code+'). Check the Fairlead request log.'
+  }
+  return $what+' failed; inspect endpoint and model settings'
+}
 function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){ReplyBytes $stream $status ([Text.Encoding]::UTF8.GetBytes($body)) $mime}
 function ReplyBytes($stream,[int]$status,[byte[]]$data,[string]$mime){
   $reason=switch($status){200{'OK'}201{'Created'}400{'Bad Request'}401{'Unauthorized'}403{'Forbidden'}404{'Not Found'}413{'Payload Too Large'}500{'Internal Server Error'}default{'Error'}}
@@ -214,6 +237,7 @@ $script:uiFiles=@{
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
   '/profiles.js'='web/profiles.js'
   '/halyard-export.js'='web/halyard-export.js'
+  '/sourcelinks.js'='web/sourcelinks.js'
   '/pdf.js'='web/pdf.js'
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
   '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'
@@ -256,6 +280,16 @@ function Process-Http($req,$stream){
     # Plain strings only: Get-Content output carries path properties that ConvertTo-Json would walk at depth 70.
     $lines=if(Test-Path $log){@(Get-Content -LiteralPath $log -Tail 100 | ForEach-Object {[string]$_})}else{@()}
     Reply $stream 200 (J @{lines=$lines;storage='Windows CurrentUser DPAPI';aiConfigured=[bool]$script:ai.endpoint});return
+  }
+  if($req.method -eq 'GET' -and $path -eq '/api/ai/router'){
+    # Status for the page: where the router is, whether it answers, whether this app has a key. Never the key.
+    $ru=$null;$reach=$false
+    if([Uri]::TryCreate($script:routerUrl,[UriKind]::Absolute,[ref]$ru)){
+      $tc=New-Object Net.Sockets.TcpClient
+      try{$iar=$tc.BeginConnect($ru.Host,$ru.Port,$null,$null);$reach=($iar.AsyncWaitHandle.WaitOne(800) -and $tc.Connected)}catch{$reach=$false}finally{$tc.Close()}
+    }
+    $hasKey=[bool](Get-EightBellsFairleadKey -AllowTestKey:$testMode)
+    Reply $stream 200 (J @{url=$script:routerUrl;reachable=$reach;keyInstalled=$hasKey;keyTarget=(Get-EightBellsFairleadTarget);active=[bool]$script:ai.router;local=[bool]$script:ai.local;model=[string]$script:ai.model});return
   }
   if($req.method -eq 'GET' -and $path -eq '/api/audit/verify'){Reply $stream 200 (J (Test-EightBellsAuditChain @((Load-State).audit)));return}
   if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
@@ -300,11 +334,13 @@ function Process-Http($req,$stream){
     if($obj.router -is [bool] -and $obj.router){
       $ruri=$null
       if(![Uri]::TryCreate($script:routerUrl,[UriKind]::Absolute,[ref]$ruri) -or $ruri.Scheme -ne 'http' -or $ruri.Host -notin @('127.0.0.1','localhost')){Reject $stream 400 'The router address must be a local HTTP address';return}
-      $script:ai=@{endpoint=$script:routerUrl;model=$(if([string]::IsNullOrEmpty([string]$obj.model)){'auto'}else{[string]$obj.model});key='';router=$true}
-      Reply $stream 200 (J @{configured=$true;router=$true;model=$script:ai.model});return
+      # Local-only is the default. Only an explicit false lets Fairlead route to a cloud model (synthetic data only).
+      $localOnly=!($obj.local -is [bool] -and !$obj.local)
+      $script:ai=@{endpoint=$script:routerUrl;model=$(if([string]::IsNullOrEmpty([string]$obj.model)){'auto'}else{[string]$obj.model});key='';router=$true;local=$localOnly}
+      Reply $stream 200 (J @{configured=$true;router=$true;model=$script:ai.model;local=$localOnly});return
     }
     $endpoint=[string]$obj.endpoint
-    if(!$endpoint){$script:ai=@{endpoint='';model='';key='';router=$false};Reply $stream 200 (J @{configured=$false});return}
+    if(!$endpoint){$script:ai=@{endpoint='';model='';key='';router=$false;local=$true};Reply $stream 200 (J @{configured=$false});return}
     $uri=$null
     if(![Uri]::TryCreate($endpoint,[UriKind]::Absolute,[ref]$uri)){Reject $stream 400 'Invalid endpoint';return}
     if($uri.Scheme -ne 'https' -and !(($uri.Scheme -eq 'http') -and ($uri.Host -in @('127.0.0.1','localhost')))){Reject $stream 400 'Only HTTPS or local HTTP AI endpoints are allowed';return}
@@ -313,7 +349,7 @@ function Process-Http($req,$stream){
       if(!$script:vaultKey){Reject $stream 400 'No key was read from Lazarette at start. Start Eight Bells with -Lazarette from a visible console (EightBells-CLI.bat -Lazarette) and unlock the vault.';return}
       Add-Member -InputObject $obj -NotePropertyName key -NotePropertyValue $script:vaultKey -Force
     }
-    $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key;router=$false}
+    $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key;router=$false;local=$true}
     Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
   }
   if($path -eq '/api/vision'){
@@ -329,16 +365,14 @@ function Process-Http($req,$stream){
     $url='data:'+$mime+';base64,'+$encoded
     $message=@{role='user';content=@(@{type='text';text='Transcribe this SYNTHETIC TRAINING watch log exactly, preserving line order and timestamps. Do not invent or normalize illegible words. Mark them [ILLEGIBLE]. Output ONLY the transcription.'},@{type='image_url';image_url=@{url=$url}})}
     $body=J @{model=$script:ai.model;messages=@($message);temperature=0.0;max_tokens=3000}
-    $headers=@{}
-    if($script:ai.key){$headers['Authorization']='Bearer '+$script:ai.key}
-    if($script:ai.router){$headers['X-Fairlead-Privacy']='local'}
+    $headers=Get-EightBellsModelHeaders
     try{
       $result=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
       $transcript=[string]$result.choices[0].message.content
       if(!$transcript){throw 'No recognized transcription'}
       Diag 'Manual synthetic-image vision transcription completed; no content logged'
       Reply $stream 200 (J @{text=$transcript;verified=$false});return
-    }catch{Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 'Vision transcription failed; verify endpoint vision support and configuration';return}
+    }catch{Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 $(if($script:ai.router){Get-EightBellsModelFailure $_ 'Vision transcription'}else{'Vision transcription failed; verify endpoint vision support and configuration'});return}
   }
   if($path -eq '/api/ai/run'){
     if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved AI endpoint';return}
@@ -348,16 +382,14 @@ function Process-Http($req,$stream){
     $lines=@($item[0].entries|Select-Object -First 150|ForEach-Object {'Line '+$_.line+': '+$_.text})
     $prompt="SYNTHETIC TRAINING LOG. Draft watch turnover, cite line numbers, do not invent resolutions. SOURCE:"+[Environment]::NewLine+($lines -join [Environment]::NewLine)
     $body=J @{model=$script:ai.model;temperature=0.1;messages=@(@{role='system';content='Create a cautious evidence-linked turnover draft, plain text.'},@{role='user';content=$prompt})}
-    $headers=@{}
-    if($script:ai.key){$headers['Authorization']='Bearer '+$script:ai.key}
-    if($script:ai.router){$headers['X-Fairlead-Privacy']='local'}
+    $headers=Get-EightBellsModelHeaders
     try{
       $response=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
       $answer=[string]$response.choices[0].message.content
       if(!$answer){throw 'Empty response'}
       Diag 'Manual AI request succeeded (no content logged)'
       Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
-    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 'AI request failed; inspect endpoint and model settings';return}
+    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 (Get-EightBellsModelFailure $_ 'AI request');return}
   }
   if($path -eq '/api/shutdown'){$script:running=$false;Diag 'End session requested from the browser';Reply $stream 200 (J @{ok=$true});return}
   Reject $stream 404 'Unknown route'

@@ -23,7 +23,7 @@ function visit(name){
  document.querySelectorAll('.nav-btn').forEach(x=>{const on=x.dataset.view===name;x.classList.toggle('active',on);if(on)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current');});
  const labels={overview:'Command Center',ingest:'Ingestion Studio',quality:'Quality Assurance',turnover:'Watch Turnover',memory:'Operational Memory',settings:'AI & Diagnostics'};
  el('pageTitle').textContent=labels[name]||name;el('breadcrumb').textContent=(labels[name]||name).toUpperCase();
- if(name==='settings')refreshDiagnostics();
+ if(name==='settings'){refreshDiagnostics();refreshRouter();}
 }
 document.addEventListener('click',ev=>{
  let button=ev.target.closest('[data-view],[data-nav]');
@@ -32,6 +32,8 @@ document.addEventListener('click',ev=>{
  if(finding){chosenFinding={logId:finding.dataset.log,findId:finding.dataset.finding};renderFinding();}
  const source=ev.target.closest('[data-source]');
  if(source){chosenLog=source.dataset.source;el('qualityLog').value=chosenLog;el('turnLog').value=chosenLog;syncTurnover();renderQuality();visit('quality');}
+ const ref=ev.target.closest('.src-ref');
+ if(ref)showSourceLine(ref.dataset.line);
  const sig=ev.target.closest('[data-signal]');
  if(sig){chosenLog=sig.dataset.signal;el('qualityLog').value=chosenLog;renderQuality();visit('quality');}
  const candidate=ev.target.closest('[data-candidate]');
@@ -65,13 +67,16 @@ function renderSources(){
  el('sourceList').innerHTML=state.logs.slice().reverse().filter(l=>(l.name+' '+l.watch).toLowerCase().includes(q)).map(l=>'<button data-source="'+escapeHTML(l.id)+'" class="row-item"><b>'+escapeHTML(l.name)+'</b><small>'+escapeHTML(l.format)+' · '+array(l.entries).length+' parsed entries · '+array(l.analysis?.findings).length+' findings</small></button>').join('')||'<p class="hint">No matching sources.</p>';
 }
 function getLog(id){return state.logs.find(l=>l.id===id);}
+// Words for the finding kinds the engine produces (web/engine.js add(...)); an unknown kind shows as it is.
+const FINDING_TITLES={'disposition':'Possible unresolved condition','chronology':'Entry out of sequence','timestamps':'Timestamp problem','copy-forward':'Repeated entry (copy-forward candidate)','interval-gap':'Reading interval gap'};
+const findingTitle=t=>FINDING_TITLES[t]||t;
 function renderQuality(){
  const l=getLog(el('qualityLog').value);if(!l){el('qualitySummary').textContent='Import a log to review its quality.';el('qualityFindings').innerHTML='';renderFinding();return;}
  const f=array(l.analysis?.findings),open=array(l.analysis?.open);
  el('qualitySummary').textContent=f.length+' advisory findings · '+open.length+' potential open conditions · Quality heuristic '+(l.analysis?.score??'—')+'/100';
  el('qualityFindings').innerHTML=f.map(x=>{
  const reviews=state.reviews.filter(r=>r.logId===l.id&&r.findingId===x.id);
- return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(x.type)+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
+ return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(findingTitle(x.type))+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
  }).join('')||'<p class="hint">No heuristic findings. This is not proof of completeness.</p>';
  renderFinding();
 }
@@ -79,7 +84,7 @@ function renderFinding(){
  const l=getLog(chosenFinding?.logId),f=array(l?.analysis?.findings).find(x=>x.id===chosenFinding?.findId);
  if(!f){el('selectedFinding').textContent='Select a quality finding to inspect evidence.';el('reviewHistory').innerHTML='';return;}
  const evidence=array(l.entries).filter(e=>array(f.lines).includes(e.line));
- el('selectedFinding').innerHTML='<b>'+escapeHTML(f.type)+'</b><p>'+escapeHTML(f.detail)+'</p><div class="stack">'+evidence.map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unknown time')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('')+'</div>';
+ el('selectedFinding').innerHTML='<b>'+escapeHTML(findingTitle(f.type))+'</b><p>'+escapeHTML(f.detail)+'</p><div class="stack">'+evidence.map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unknown time')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('')+'</div>';
  el('reviewHistory').innerHTML=state.reviews.filter(r=>r.logId===l.id&&r.findingId===f.id).slice().reverse().map(r=>'<div class="row-item"><b>'+escapeHTML(r.disposition)+'</b><p>'+escapeHTML(r.note)+'</p><small>'+escapeHTML(r.at)+'</small></div>').join('')||'<p class="hint">No reviewer notes yet.</p>';
 }
 async function reviewFinding(){
@@ -155,6 +160,17 @@ async function saveLesson(){
  el('lessonTitle').value='';el('lessonBody').value='';await refresh();notify('Memory draft encrypted locally.');
 }
 function selectedTurn(){return getLog(el('turnLog').value);}
+// The source lines of the log the draft was made from. A line number in the draft opens its row here.
+function renderTurnSource(log){
+ const rows=window.EightBellsSourceLinks.sourceRows(log);
+ el('turnSource').innerHTML=rows.length?rows.map(r=>'<div class="row-item src-row" id="src-'+r.line+'" data-line="'+r.line+'"><small>Line '+r.line+(r.time?' · '+escapeHTML(r.time):'')+'</small><p>'+escapeHTML(r.text)+'</p></div>').join(''):'<p class="hint">Generate a draft to see its source lines.</p>';
+}
+function showSourceLine(n){
+ const row=document.getElementById('src-'+n);if(!row)return;
+ document.querySelectorAll('#turnSource .src-row.is-cited').forEach(x=>x.classList.remove('is-cited'));
+ row.classList.add('is-cited');row.scrollIntoView({block:'center',behavior:'smooth'});
+ notify('Source line '+n+' shown below the draft.');
+}
 function syncTurnover(){
  const log=selectedTurn(),source=log?JSON.stringify(log):null;
  if(source!==turnoverSource){
@@ -164,7 +180,8 @@ function syncTurnover(){
  }
  const ready=!!turnoverDraft;
  el('copyTurn').disabled=!ready;el('saveTurn').disabled=!ready;
- el('turnText').textContent=ready?turnoverDraft.text:'Choose a log and generate a new draft for that source.';
+ if(ready)el('turnText').innerHTML=window.EightBellsSourceLinks.linkRefs(turnoverDraft.text);else el('turnText').textContent='Choose a log and generate a new draft for that source.';
+ renderTurnSource(ready?log:null);
  el('turnStatus').textContent=ready?'Draft source: '+log.name+' · Generated '+turnoverDraft.generatedAt+' · Requires source verification.':'No current draft. Generate again after changing the source.';
 }
 function generateTurn(){
@@ -197,6 +214,21 @@ async function runAI(){
  }catch(e){if(request===aiRequest){el('aiText').textContent='AI draft unavailable: '+e.message;throw e;}}
  finally{if(request===aiRequest){el('aiConsent').checked=false;el('runAi').disabled=false;}}
 }
+async function refreshRouter(){
+ try{
+  const r=await api('/api/ai/router');
+  el('routerAddr').textContent=r.url+(r.active?' (in use)':'');
+  el('routerReach').textContent=r.reachable?'answering on this PC':'not answering. Start Fairlead.';
+  el('routerKey').textContent=r.keyInstalled?'installed':'not installed. In Fairlead choose Clients, Install for this app, name it EightBells.';
+  if(r.active){el('routerLocal').checked=!!r.local;if(r.model)el('routerModel').value=r.model;}
+ }catch(e){el('routerReach').textContent='unknown ('+e.message+')';}
+}
+async function useRouter(){
+ const model=el('routerModel').value.trim()||'auto';
+ const r=await api('/api/ai/config',{router:true,model:model,local:el('routerLocal').checked});
+ notify('Fleet router in use'+(r.local?' (local models only).':' (cloud models allowed; synthetic data only).'));
+ await refreshRouter();
+}
 async function refreshDiagnostics(){
  try{const d=await api('/api/diagnostics');el('diagOutput').textContent='STORAGE: '+d.storage+'\nAI CONFIGURED: '+d.aiConfigured+'\n\n'+array(d.lines).join('\n');}
  catch(e){el('diagOutput').textContent='Diagnostics unavailable: '+e.message;}
@@ -223,16 +255,23 @@ bind('turnLog','change',syncTurnover);
 bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',renderMemory);
 bind('lessonSave','click',safe(saveLesson));
 bind('halyardExport','click',safe(async()=>{
- const out=window.EightBellsHalyard.exportLessons(state.lessons);
+ const out=window.EightBellsHalyard.toHandoff(state.lessons);
  if(!out.items.length)throw Error('No reviewed lessons to export yet. Mark a lesson reviewed first.');
- download('EightBells-halyard-backlog.json',JSON.stringify(out,null,2),'application/json');
- notify(out.items.length+' lesson(s) exported for Halyard; '+out.skipped.length+' skipped. Review them in Halyard\'s sandbox before promoting.');
+ download('EightBells-halyard-handoff.json',JSON.stringify(out,null,2),'application/json');
+ notify(out.items.length+' lesson(s) exported for Halyard Intake; '+out.skipped.length+' skipped. Halyard drafts them for review; nothing is written until a person approves.');
 }));
 bind('generateTurn','click',safe(generateTurn));
 bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(currentTurnover());notify('Turnover copied to clipboard.');}));
 bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',currentTurnover(),'text/plain');}));
+bind('semaphoreExport','click',safe(async()=>{
+ const rows=E.semaphoreRows(state.logs,state.lessons);
+ if(!rows.length)throw Error('Import a log first. The export has one row per watch.');
+ download('EightBells-semaphore.csv',E.semaphoreCsv(rows),'text/csv');
+ notify(rows.length+' watch row(s) exported for Semaphore. Counts only; no log text.');
+}));
 bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
+bind('routerUse','click',safe(useRouter));bind('routerRefresh','click',safe(refreshRouter));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
 // Voice (web/voice.js): on-device speech only. voice.js loads after this file, so it is looked up when a button is pressed.
 let voice=null,dictation=null;
