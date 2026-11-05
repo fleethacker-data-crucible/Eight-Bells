@@ -237,6 +237,7 @@ $script:uiFiles=@{
   '/shell.js'='web/shell.js';'/icons.js'='web/icons.js';'/vendor/fleet/fleet.css'='web/vendor/fleet/fleet.css';'/assets/brand/mark.svg'='assets/brand/mark.svg'
   '/profiles.js'='web/profiles.js'
   '/halyard-export.js'='web/halyard-export.js'
+  '/sourcelinks.js'='web/sourcelinks.js'
   '/pdf.js'='web/pdf.js'
   # The emblem (backdrop made transparent, one per theme) and the favicon / icon cut from its circle.
   '/brand/emblem-dark.png'='web/brand/emblem-dark.png';'/brand/emblem-light.png'='web/brand/emblem-light.png';'/brand/icon-256.png'='web/brand/icon-256.png'

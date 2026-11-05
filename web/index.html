@@ -57,6 +57,7 @@
   </section>
   <section id="turnover" class="view"><div class="section-header"><div><h2>Watch Turnover</h2><p>Evidence-linked draft briefing; a human must verify conditions and procedures.</p></div></div>
     <article class="panel fl-card"><div class="inline"><label class="grow" for="turnLog">Source log<select class="fl-input" id="turnLog"></select></label><button id="generateTurn" class="accent fl-btn fl-btn--primary">Generate draft</button><button id="copyTurn" class="outline fl-btn fl-btn--secondary" disabled><span data-icon="copy"></span>Copy</button><button id="saveTurn" class="outline fl-btn fl-btn--secondary" disabled><span data-icon="save"></span>Save TXT</button><button id="readTurn" class="outline fl-btn fl-btn--secondary" type="button">Read aloud</button><button id="stopTurn" class="outline fl-btn fl-btn--secondary" type="button">Stop</button></div><p id="turnStatus" class="hint" role="status">No current draft. Choose a log and generate the draft.</p><p id="voiceOutHint" class="hint">Read aloud uses an on-device Windows voice only; nothing is sent to a speech service.</p><pre id="turnText" class="report">Choose a log and generate the draft.</pre></article>
+    <article class="panel fl-card" id="turnSourceCard"><h3>Source log</h3><p class="hint">Select a line number in the draft to see that line here, in the log as imported. The source is never changed.</p><div id="turnSource" class="stack"></div></article>
     <article class="panel fl-card"><h3>Optional AI-assisted briefing</h3><p class="hint">Sends up to 150 extracted log entries to the manually configured endpoint, only when you explicitly approve. Synthetic, non-sensitive data only. Output is unverified.</p><label class="check"><input id="aiConsent" type="checkbox"> I authorize sending this synthetic training log to the configured endpoint for this request.</label><button id="runAi" class="outline fl-btn fl-btn--secondary"><span data-icon="sparkles"></span>Request AI draft</button><pre id="aiText" class="report">AI has not been requested.</pre></article>
   </section>
   <section id="memory" class="view"><div class="section-header"><div><h2>Operational Memory</h2><p>Searchable history, recurring-pattern candidates, and reviewed lessons.</p></div><button id="exportBtn" class="outline fl-btn fl-btn--secondary"><span data-icon="download"></span>Export JSON</button></div>
@@ -90,6 +91,6 @@
 <script src="/engine.js"></script>
 <script src="/adapters.js"></script>
 <script src="/profiles.js"></script>
-<script src="/halyard-export.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
+<script src="/halyard-export.js"></script><script src="/sourcelinks.js"></script><script src="/lifecycle.js"></script><script src="/app.js"></script>
 <script src="/voice.js"></script>
 </body></html>

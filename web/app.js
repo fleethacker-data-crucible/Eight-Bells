@@ -32,6 +32,8 @@ document.addEventListener('click',ev=>{
  if(finding){chosenFinding={logId:finding.dataset.log,findId:finding.dataset.finding};renderFinding();}
  const source=ev.target.closest('[data-source]');
  if(source){chosenLog=source.dataset.source;el('qualityLog').value=chosenLog;el('turnLog').value=chosenLog;syncTurnover();renderQuality();visit('quality');}
+ const ref=ev.target.closest('.src-ref');
+ if(ref)showSourceLine(ref.dataset.line);
  const sig=ev.target.closest('[data-signal]');
  if(sig){chosenLog=sig.dataset.signal;el('qualityLog').value=chosenLog;renderQuality();visit('quality');}
  const candidate=ev.target.closest('[data-candidate]');
@@ -158,6 +160,17 @@ async function saveLesson(){
  el('lessonTitle').value='';el('lessonBody').value='';await refresh();notify('Memory draft encrypted locally.');
 }
 function selectedTurn(){return getLog(el('turnLog').value);}
+// The source lines of the log the draft was made from. A line number in the draft opens its row here.
+function renderTurnSource(log){
+ const rows=window.EightBellsSourceLinks.sourceRows(log);
+ el('turnSource').innerHTML=rows.length?rows.map(r=>'<div class="row-item src-row" id="src-'+r.line+'" data-line="'+r.line+'"><small>Line '+r.line+(r.time?' · '+escapeHTML(r.time):'')+'</small><p>'+escapeHTML(r.text)+'</p></div>').join(''):'<p class="hint">Generate a draft to see its source lines.</p>';
+}
+function showSourceLine(n){
+ const row=document.getElementById('src-'+n);if(!row)return;
+ document.querySelectorAll('#turnSource .src-row.is-cited').forEach(x=>x.classList.remove('is-cited'));
+ row.classList.add('is-cited');row.scrollIntoView({block:'center',behavior:'smooth'});
+ notify('Source line '+n+' shown below the draft.');
+}
 function syncTurnover(){
  const log=selectedTurn(),source=log?JSON.stringify(log):null;
  if(source!==turnoverSource){
@@ -167,7 +180,8 @@ function syncTurnover(){
  }
  const ready=!!turnoverDraft;
  el('copyTurn').disabled=!ready;el('saveTurn').disabled=!ready;
- el('turnText').textContent=ready?turnoverDraft.text:'Choose a log and generate a new draft for that source.';
+ if(ready)el('turnText').innerHTML=window.EightBellsSourceLinks.linkRefs(turnoverDraft.text);else el('turnText').textContent='Choose a log and generate a new draft for that source.';
+ renderTurnSource(ready?log:null);
  el('turnStatus').textContent=ready?'Draft source: '+log.name+' · Generated '+turnoverDraft.generatedAt+' · Requires source verification.':'No current draft. Generate again after changing the source.';
 }
 function generateTurn(){
