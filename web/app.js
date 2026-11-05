@@ -65,13 +65,16 @@ function renderSources(){
  el('sourceList').innerHTML=state.logs.slice().reverse().filter(l=>(l.name+' '+l.watch).toLowerCase().includes(q)).map(l=>'<button data-source="'+escapeHTML(l.id)+'" class="row-item"><b>'+escapeHTML(l.name)+'</b><small>'+escapeHTML(l.format)+' · '+array(l.entries).length+' parsed entries · '+array(l.analysis?.findings).length+' findings</small></button>').join('')||'<p class="hint">No matching sources.</p>';
 }
 function getLog(id){return state.logs.find(l=>l.id===id);}
+// Words for the finding kinds the engine produces (web/engine.js add(...)); an unknown kind shows as it is.
+const FINDING_TITLES={'disposition':'Possible unresolved condition','chronology':'Entry out of sequence','timestamps':'Timestamp problem','copy-forward':'Repeated entry (copy-forward candidate)','interval-gap':'Reading interval gap'};
+const findingTitle=t=>FINDING_TITLES[t]||t;
 function renderQuality(){
  const l=getLog(el('qualityLog').value);if(!l){el('qualitySummary').textContent='Import a log to review its quality.';el('qualityFindings').innerHTML='';renderFinding();return;}
  const f=array(l.analysis?.findings),open=array(l.analysis?.open);
  el('qualitySummary').textContent=f.length+' advisory findings · '+open.length+' potential open conditions · Quality heuristic '+(l.analysis?.score??'—')+'/100';
  el('qualityFindings').innerHTML=f.map(x=>{
  const reviews=state.reviews.filter(r=>r.logId===l.id&&r.findingId===x.id);
- return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(x.type)+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
+ return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(findingTitle(x.type))+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
  }).join('')||'<p class="hint">No heuristic findings. This is not proof of completeness.</p>';
  renderFinding();
 }
@@ -79,7 +82,7 @@ function renderFinding(){
  const l=getLog(chosenFinding?.logId),f=array(l?.analysis?.findings).find(x=>x.id===chosenFinding?.findId);
  if(!f){el('selectedFinding').textContent='Select a quality finding to inspect evidence.';el('reviewHistory').innerHTML='';return;}
  const evidence=array(l.entries).filter(e=>array(f.lines).includes(e.line));
- el('selectedFinding').innerHTML='<b>'+escapeHTML(f.type)+'</b><p>'+escapeHTML(f.detail)+'</p><div class="stack">'+evidence.map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unknown time')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('')+'</div>';
+ el('selectedFinding').innerHTML='<b>'+escapeHTML(findingTitle(f.type))+'</b><p>'+escapeHTML(f.detail)+'</p><div class="stack">'+evidence.map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unknown time')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('')+'</div>';
  el('reviewHistory').innerHTML=state.reviews.filter(r=>r.logId===l.id&&r.findingId===f.id).slice().reverse().map(r=>'<div class="row-item"><b>'+escapeHTML(r.disposition)+'</b><p>'+escapeHTML(r.note)+'</p><small>'+escapeHTML(r.at)+'</small></div>').join('')||'<p class="hint">No reviewer notes yet.</p>';
 }
 async function reviewFinding(){
