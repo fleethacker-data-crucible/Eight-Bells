@@ -225,3 +225,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   .metrics { gap: 8px; }
   .storage { display: none; }
 }
+
+/* Line numbers in a turnover draft open the source line; the cited line is outlined in the accent. */
+.src-ref { font: inherit; color: var(--fl-accent); background: none; border: 0; border-bottom: 1px solid var(--fl-accent); padding: 0 1px; cursor: pointer; }
+.src-ref:focus-visible { outline: 2px solid var(--fl-accent); outline-offset: 2px; }
+.src-row.is-cited { border-color: var(--fl-accent); background: var(--fl-muted); }

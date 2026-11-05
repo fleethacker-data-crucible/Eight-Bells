@@ -30,7 +30,7 @@ async function app(){
   if(route==='/api/ai/run')return new Promise(resolve=>aiRequests.push(text=>resolve({ok:true,json:async()=>({model:'synthetic-model',text})})));
   throw Error('Unexpected route '+route);
  };
- vm.runInNewContext(script,{window:{EightBellsEngine:engine,EightBellsLifecycle:{startHeartbeat:()=>()=>{}}},document,location:{hash:'#token=synthetic-ui-test'},
+ vm.runInNewContext(script,{window:{EightBellsEngine:engine,EightBellsSourceLinks:require('../web/sourcelinks.js'),EightBellsLifecycle:{startHeartbeat:()=>()=>{}}},document,location:{hash:'#token=synthetic-ui-test'},
   navigator:{clipboard:{writeText:async text=>copied.push(text)}},fetch,Blob,URL:{createObjectURL:blob=>{const id='blob:'+ ++blobId;blobs.set(id,blob);return id;},revokeObjectURL(){}},setTimeout:()=>0,console});
  await settle();
  return {element,copied,downloads,aiRequests,state:()=>state,
