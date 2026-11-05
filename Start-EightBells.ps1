@@ -389,7 +389,7 @@ function Process-Http($req,$stream){
       if(!$answer){throw 'Empty response'}
       Diag 'Manual AI request succeeded (no content logged)'
       Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
-    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 502 (Get-EightBellsModelFailure $_ 'AI request');return}
+    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 (Get-EightBellsModelFailure $_ 'AI request');return}
   }
   if($path -eq '/api/shutdown'){$script:running=$false;Diag 'End session requested from the browser';Reply $stream 200 (J @{ok=$true});return}
   Reject $stream 404 'Unknown route'
