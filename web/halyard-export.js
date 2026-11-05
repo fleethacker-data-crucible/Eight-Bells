@@ -40,5 +40,25 @@ function parseMeta(body){
  const out={};for(const line of m[1].split(/\r?\n/)){const i=line.indexOf(':');if(i>0)out[line.slice(0,i).trim()]=line.slice(i+1).trim();}
  return out;
 }
-return {SCHEMA,DEFAULTS,exportLessons,parseMeta,storyId};
+// The file Halyard's Intake reads (Halyard docs/HANDOFF.md, "fleet-handoff" version 1): one item per reviewed lesson, with the
+// lesson's id as the stable ref so importing the same export twice is recognised as already copied. Intake classifies the
+// item, drafts its halyard-meta body, links back to the ref and leaves it for human review; nothing goes straight to a backlog.
+const HANDOFF={format:'fleet-handoff',version:1,app:'eight-bells',maxItems:500,maxTitle:200,maxBody:20000};
+function toHandoff(lessons,opts){
+ const o=Object.assign({includeDrafts:false},opts||{}),items=[],skipped=[],seen=new Set();
+ for(const lesson of Array.isArray(lessons)?lessons:[]){
+  const ref=clean(lesson&&lesson.id),title=clean(lesson&&lesson.title).slice(0,HANDOFF.maxTitle);
+  if(!lesson||!title){skipped.push({id:lesson&&lesson.id||null,reason:'no title'});continue;}
+  if(!ref){skipped.push({id:null,reason:'no id'});continue;}
+  if(lesson.status!=='reviewed'&&!o.includeDrafts){skipped.push({id:lesson.id,reason:'not reviewed'});continue;}
+  if(seen.has(ref)){skipped.push({id:lesson.id,reason:'duplicate id'});continue;}
+  if(items.length>=HANDOFF.maxItems){skipped.push({id:lesson.id,reason:'over the 500-item limit'});continue;}
+  seen.add(ref);
+  const text=String(lesson.body==null?'':lesson.body).trim()||'(no text)';
+  const NL=String.fromCharCode(10),note=NL+NL+'Handed over from Eight Bells as a reviewed lesson learned'+(lesson.source?' (source log '+lesson.source+')':'')+'. Check it against the source evidence before acting.';
+  items.push({ref,title,body:(text+note).slice(0,HANDOFF.maxBody),kind:'story',labels:['area::watchstanding']});
+ }
+ return {format:HANDOFF.format,version:HANDOFF.version,source:{app:HANDOFF.app,exportedAt:o.now||new Date().toISOString()},items,skipped};
+}
+return {SCHEMA,DEFAULTS,HANDOFF,exportLessons,toHandoff,parseMeta,storyId};
 });
