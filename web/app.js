@@ -238,10 +238,10 @@ bind('turnLog','change',syncTurnover);
 bind('reviewBtn','click',safe(reviewFinding));bind('memorySearch','input',renderMemory);
 bind('lessonSave','click',safe(saveLesson));
 bind('halyardExport','click',safe(async()=>{
- const out=window.EightBellsHalyard.exportLessons(state.lessons);
+ const out=window.EightBellsHalyard.toHandoff(state.lessons);
  if(!out.items.length)throw Error('No reviewed lessons to export yet. Mark a lesson reviewed first.');
- download('EightBells-halyard-backlog.json',JSON.stringify(out,null,2),'application/json');
- notify(out.items.length+' lesson(s) exported for Halyard; '+out.skipped.length+' skipped. Review them in Halyard\'s sandbox before promoting.');
+ download('EightBells-halyard-handoff.json',JSON.stringify(out,null,2),'application/json');
+ notify(out.items.length+' lesson(s) exported for Halyard Intake; '+out.skipped.length+' skipped. Halyard drafts them for review; nothing is written until a person approves.');
 }));
 bind('generateTurn','click',safe(generateTurn));
 bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(currentTurnover());notify('Turnover copied to clipboard.');}));
