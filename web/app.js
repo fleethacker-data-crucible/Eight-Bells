@@ -23,7 +23,7 @@ function visit(name){
  document.querySelectorAll('.nav-btn').forEach(x=>{const on=x.dataset.view===name;x.classList.toggle('active',on);if(on)x.setAttribute('aria-current','page');else x.removeAttribute('aria-current');});
  const labels={overview:'Command Center',ingest:'Ingestion Studio',quality:'Quality Assurance',turnover:'Watch Turnover',memory:'Operational Memory',settings:'AI & Diagnostics'};
  el('pageTitle').textContent=labels[name]||name;el('breadcrumb').textContent=(labels[name]||name).toUpperCase();
- if(name==='settings')refreshDiagnostics();
+ if(name==='settings'){refreshDiagnostics();refreshRouter();}
 }
 document.addEventListener('click',ev=>{
  let button=ev.target.closest('[data-view],[data-nav]');
@@ -197,6 +197,21 @@ async function runAI(){
  }catch(e){if(request===aiRequest){el('aiText').textContent='AI draft unavailable: '+e.message;throw e;}}
  finally{if(request===aiRequest){el('aiConsent').checked=false;el('runAi').disabled=false;}}
 }
+async function refreshRouter(){
+ try{
+  const r=await api('/api/ai/router');
+  el('routerAddr').textContent=r.url+(r.active?' (in use)':'');
+  el('routerReach').textContent=r.reachable?'answering on this PC':'not answering. Start Fairlead.';
+  el('routerKey').textContent=r.keyInstalled?'installed':'not installed. In Fairlead choose Clients, Install for this app, name it EightBells.';
+  if(r.active){el('routerLocal').checked=!!r.local;if(r.model)el('routerModel').value=r.model;}
+ }catch(e){el('routerReach').textContent='unknown ('+e.message+')';}
+}
+async function useRouter(){
+ const model=el('routerModel').value.trim()||'auto';
+ const r=await api('/api/ai/config',{router:true,model:model,local:el('routerLocal').checked});
+ notify('Fleet router in use'+(r.local?' (local models only).':' (cloud models allowed; synthetic data only).'));
+ await refreshRouter();
+}
 async function refreshDiagnostics(){
  try{const d=await api('/api/diagnostics');el('diagOutput').textContent='STORAGE: '+d.storage+'\nAI CONFIGURED: '+d.aiConfigured+'\n\n'+array(d.lines).join('\n');}
  catch(e){el('diagOutput').textContent='Diagnostics unavailable: '+e.message;}
@@ -233,6 +248,7 @@ bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(curre
 bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',currentTurnover(),'text/plain');}));
 bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
+bind('routerUse','click',safe(useRouter));bind('routerRefresh','click',safe(refreshRouter));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
 // Voice (web/voice.js): on-device speech only. voice.js loads after this file, so it is looked up when a button is pressed.
 let voice=null,dictation=null;

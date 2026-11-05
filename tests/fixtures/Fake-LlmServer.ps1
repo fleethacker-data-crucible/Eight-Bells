@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][int]$Port,[Parameter(Mandatory=$true)][string]$Record,[ValidateSet('ok','fail','empty')][string]$Mode='ok',[string]$Reply='SYNTHETIC REPLY: Pump B vibration remains open (Line 1).')
+param([Parameter(Mandatory=$true)][int]$Port,[Parameter(Mandatory=$true)][string]$Record,[ValidateSet('ok','fail','empty','deny')][string]$Mode='ok',[string]$Reply='SYNTHETIC REPLY: Pump B vibration remains open (Line 1).')
 # Fake OpenAI-compatible chat endpoint for tests. Binds loopback only, answers every POST, and appends one JSON line per
 # request (path, Authorization and X-Fairlead-Privacy headers, parsed body) to -Record. Synthetic data only; no network.
 $ErrorActionPreference='Stop'
@@ -38,6 +38,7 @@ try{
       $entry=@{path=$path;auth=$auth;privacy=$privacy;body=($body|ConvertFrom-Json)}
       Add-Content -LiteralPath $Record -Value (ConvertTo-Json -InputObject $entry -Depth 20 -Compress) -Encoding UTF8
       if($Mode -eq 'fail'){Send $stream 500 '{"error":"synthetic upstream failure"}'}
+      elseif($Mode -eq 'deny'){Send $stream 401 '{"error":"synthetic key refused"}'}
       elseif($Mode -eq 'empty'){Send $stream 200 '{"choices":[{"message":{"content":""}}]}'}
       else{Send $stream 200 (ConvertTo-Json -InputObject @{choices=@(@{message=@{role='assistant';content=$Reply}})} -Depth 6 -Compress)}
     }catch{}
