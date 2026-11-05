@@ -246,6 +246,12 @@ bind('halyardExport','click',safe(async()=>{
 bind('generateTurn','click',safe(generateTurn));
 bind('copyTurn','click',safe(async()=>{await navigator.clipboard.writeText(currentTurnover());notify('Turnover copied to clipboard.');}));
 bind('saveTurn','click',safe(async()=>{download('EightBells-turnover.txt',currentTurnover(),'text/plain');}));
+bind('semaphoreExport','click',safe(async()=>{
+ const rows=E.semaphoreRows(state.logs,state.lessons);
+ if(!rows.length)throw Error('Import a log first. The export has one row per watch.');
+ download('EightBells-semaphore.csv',E.semaphoreCsv(rows),'text/csv');
+ notify(rows.length+' watch row(s) exported for Semaphore. Counts only; no log text.');
+}));
 bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training records to UNENCRYPTED JSON?'))return;download('EightBells-export.json',JSON.stringify(state,null,2),'application/json');}));
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
 bind('routerUse','click',safe(useRouter));bind('routerRefresh','click',safe(refreshRouter));
