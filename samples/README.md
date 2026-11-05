@@ -6,6 +6,7 @@ ALL CONTENT IS FICTIONAL. No real ship, personnel, equipment identifiers, operat
 - engineering_discrepancy.txt — abnormal condition with unresolved follow-up
 - engineering_repetition.log — repeated entries for quality QA
 - engineering_chronology.txt — out-of-order timestamps
+- engineering_turnover_demo.txt — one log with both an unresolved Pump B condition and a late entry out of sequence (for the turnover walkthrough)
 - quarterdeck_watch.txt — quarterdeck event narrative
 - damage_control_watch.txt — simulated DC log
 - security_patrol.txt — security watch
