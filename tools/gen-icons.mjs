@@ -33,21 +33,35 @@ const ICONS = {
   expand: 'panel-left-open',
 };
 
-// Drop HTML comments by scanning, then repeat. A one-shot replace of
-// /<!--...-->/ can splice the two sides into a new <!-- (for example
-// <!<!--note-->--), which is the incomplete multi-character sanitizer.
-// An unclosed <!-- consumes the rest of the file, as an HTML comment would.
-export function stripHtmlComments(input) {
-  let s = String(input);
-  for (;;) {
-    const start = s.indexOf('<!--');
-    if (start < 0) return s;
-    const end = s.indexOf('-->', start + 4);
-    if (end < 0) return s.slice(0, start);
-    const next = s.slice(0, start) + s.slice(end + 3);
-    if (next === s) return s;
-    s = next;
+// Shared fleet comment stripper (Bowerbird, Capstan, Eight-Bells, Gangplank, PacketRat).
+function commentEnd(s, from) {
+  for (let j = from; j < s.length - 2; j++) {
+    if (s[j] !== '-' || s[j + 1] !== '-') continue;
+    if (s[j + 2] === '>') return j + 3;
+    if (s[j + 2] === '!' && s[j + 3] === '>') return j + 4;
   }
+  return -1;
+}
+function stripOnce(s) {
+  let out = '';
+  let i = 0;
+  while (i < s.length) {
+    const start = s.indexOf('<!--', i);
+    if (start < 0) return out + s.slice(i);
+    out += s.slice(i, start);
+    if (s[start + 4] === '>') { i = start + 5; continue; }
+    if (s[start + 4] === '-' && s[start + 5] === '>') { i = start + 6; continue; }
+    const end = commentEnd(s, start + 4);
+    if (end < 0) return out;
+    i = end;
+  }
+  return out;
+}
+export function stripHtmlComments(input) {
+  let cur = String(input);
+  let prev;
+  do { prev = cur; cur = stripOnce(cur); } while (cur !== prev);
+  return cur;
 }
 
 // Inner markup of a Lucide SVG: no comment, no outer <svg>, newlines collapsed.

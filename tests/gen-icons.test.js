@@ -14,6 +14,18 @@ const before=fs.readFileSync(iconsPath,'utf8');
  assert.strictEqual(stripHtmlComments('<!<!--xxxx-->--'),'','A comment spliced back together is removed too');
  assert.strictEqual(stripHtmlComments('keep <!-- unclosed tail'),'keep ','An unclosed comment consumes the rest');
  assert.ok(!stripHtmlComments('<!<!--xxxx-->--<path/>').includes('<!--'),'No comment start remains');
+ // Shared fleet cases: empty comments, --!>, unclosed tails, and a removal that would reassemble <!--.
+ const fleet=[
+  ['a<!-- x -->b','ab'],
+  ['a<!-->b','ab'],
+  ['a<!--->b','ab'],
+  ['a<!-- x --!>b','ab'],
+  ['a<!--unclosed <path d="1"/>','a'],
+  ['<!<!---->-->x','x'],
+  ['<<!-- -->!--<path/>-->y','y'],
+  ['<path d="1"/>','<path d="1"/>']
+ ];
+ for(const [input,expected] of fleet)assert.strictEqual(stripHtmlComments(input),expected,'fleet comment case '+JSON.stringify(input));
  // The license header Lucide 1.54.0 writes above each icon, then the power icon body.
  const power=`<!-- @license lucide-static v1.54.0 - ISC -->
 <svg
