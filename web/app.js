@@ -29,7 +29,7 @@ document.addEventListener('click',ev=>{
  let button=ev.target.closest('[data-view],[data-nav]');
  if(button){visit(button.dataset.view||button.dataset.nav);}
  const finding=ev.target.closest('[data-finding]');
- if(finding){chosenFinding={logId:finding.dataset.log,findId:finding.dataset.finding};renderFinding();}
+ if(finding){chosenFinding={logId:finding.dataset.log,findId:finding.dataset.finding};renderQuality();}
  const source=ev.target.closest('[data-source]');
  if(source){chosenLog=source.dataset.source;el('qualityLog').value=chosenLog;el('turnLog').value=chosenLog;syncTurnover();renderQuality();visit('quality');}
  const ref=ev.target.closest('.src-ref');
@@ -71,20 +71,27 @@ function getLog(id){return state.logs.find(l=>l.id===id);}
 const FINDING_TITLES={'disposition':'Possible unresolved condition','chronology':'Entry out of sequence','timestamps':'Timestamp problem','copy-forward':'Repeated entry (copy-forward candidate)','interval-gap':'Reading interval gap'};
 const findingTitle=t=>FINDING_TITLES[t]||t;
 function renderQuality(){
+ // The pressed row is the finding a review note will attach to. Redrawing the list returns keyboard focus to it.
+ const active=document.activeElement;
+ const keep=active&&active.closest&&active.closest('#qualityFindings [data-finding]');
+ const keepId=keep?keep.dataset.finding:'';
  const l=getLog(el('qualityLog').value);if(!l){el('qualitySummary').textContent='Import a log to review its quality.';el('qualityFindings').innerHTML='';renderFinding();return;}
  const f=array(l.analysis?.findings),open=array(l.analysis?.open);
  el('qualitySummary').textContent=f.length+' advisory findings · '+open.length+' potential open conditions · Quality heuristic '+(l.analysis?.score??'—')+'/100';
  el('qualityFindings').innerHTML=f.map(x=>{
  const reviews=state.reviews.filter(r=>r.logId===l.id&&r.findingId===x.id);
- return '<button class="row-item flag" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'"><b>'+escapeHTML(findingTitle(x.type))+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
+ const on=!!(chosenFinding&&chosenFinding.logId===l.id&&chosenFinding.findId===x.id);
+ return '<button class="row-item flag'+(on?' is-selected':'')+'" data-finding="'+escapeHTML(x.id)+'" data-log="'+escapeHTML(l.id)+'" aria-pressed="'+(on?'true':'false')+'"><b>'+escapeHTML(findingTitle(x.type))+' <span class="pill warn fl-badge">'+escapeHTML(x.priority)+'</span></b><p>'+escapeHTML(x.detail)+'</p><small>Source lines '+escapeHTML(array(x.lines).join(', '))+' · '+reviews.length+' reviews</small></button>';
  }).join('')||'<p class="hint">No heuristic findings. This is not proof of completeness.</p>';
+ if(keepId){const again=[...el('qualityFindings').querySelectorAll('[data-finding]')].find(b=>b.dataset.finding===keepId);if(again)again.focus();}
  renderFinding();
 }
 function renderFinding(){
  const l=getLog(chosenFinding?.logId),f=array(l?.analysis?.findings).find(x=>x.id===chosenFinding?.findId);
  if(!f){el('selectedFinding').textContent='Select a quality finding to inspect evidence.';el('reviewHistory').innerHTML='';return;}
  const evidence=array(l.entries).filter(e=>array(f.lines).includes(e.line));
- el('selectedFinding').innerHTML='<b>'+escapeHTML(findingTitle(f.type))+'</b><p>'+escapeHTML(f.detail)+'</p><div class="stack">'+evidence.map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unknown time')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('')+'</div>';
+ const lines=array(f.lines).join(', ');
+ el('selectedFinding').innerHTML='<b>'+escapeHTML(findingTitle(f.type))+'</b><p>'+escapeHTML(f.detail)+'</p><p class="hint">Review note attaches to '+escapeHTML(l.name)+' · source lines '+escapeHTML(lines)+'</p><div class="stack">'+evidence.map(e=>'<div class="row-item"><small>Line '+e.line+' · '+escapeHTML(e.time||'Unknown time')+'</small><p>'+escapeHTML(e.text)+'</p></div>').join('')+'</div>';
  el('reviewHistory').innerHTML=state.reviews.filter(r=>r.logId===l.id&&r.findingId===f.id).slice().reverse().map(r=>'<div class="row-item"><b>'+escapeHTML(r.disposition)+'</b><p>'+escapeHTML(r.note)+'</p><small>'+escapeHTML(r.at)+'</small></div>').join('')||'<p class="hint">No reviewer notes yet.</p>';
 }
 async function reviewFinding(){

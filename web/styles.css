@@ -153,6 +153,8 @@ button.row-item:hover { border-color: var(--fl-control-border); background: var(
 .row-item p { font-size: var(--fl-text-secondary); margin: 8px 0 0; color: var(--fl-foreground); }
 .row-item .fl-btn { margin-top: 8px; }
 .row-item.flag { border-left: 3px solid var(--fl-warning); }
+/* The finding under review, same accent treatment as a cited source line. */
+button.row-item.flag.is-selected, button.row-item.flag[aria-pressed='true'] { border-color: var(--fl-accent); background: var(--fl-muted); }
 .row-item.good { border-left: 3px solid var(--fl-success); }
 .pill { color: var(--fl-info); white-space: nowrap; background: color-mix(in srgb, currentColor 10%, transparent); }
 .pill.warn { color: var(--fl-warning); }
