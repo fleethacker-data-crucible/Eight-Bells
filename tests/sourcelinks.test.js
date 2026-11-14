@@ -10,8 +10,15 @@ const text=E.turnover(log),html=S.linkRefs(text);
 assert((html.match(/class="src-ref"/g)||[]).length>=3,'Observation lines, open conditions and quality lines are linked');
 assert(/^Line <button[^>]*data-line="1"[^>]*>1<\/button> \|/m.test(html),'An observation line links its line number');
 assert(/\(source line <button[^>]*data-line="2"/.test(html),'An open-condition reference is linked');
-const back=html.replace(/<[^>]*>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+// Inverse of linkRefs: drop only the buttons it inserts, then decode the entities it wrote.
+// A general /<[^>]*>/ strip can leave a <script behind; that is not the property this check proves.
+function undo(html){
+ return html.replace(/<button type="button" class="src-ref" data-line="(\d+)" title="Show source line \1">\1<\/button>/g,'$1')
+  .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&amp;/g,'&');
+}
+const back=undo(html);
 assert.strictEqual(back,text,'Stripping the buttons gives back exactly the draft text');
+assert.strictEqual(undo(S.linkRefs('Line 9 | <script>alert(1)</script> <!--kept-->')),'Line 9 | <script>alert(1)</script> <!--kept-->','Escaped script and comment text round-trips');
 // Hostile text is escaped, never run.
 const evil=S.linkRefs('Line 3 | <img src=x onerror=alert(1)> (source line 4)');
 assert(!/<img/.test(evil)&&evil.includes('&lt;img'),'Markup in a log line is escaped');

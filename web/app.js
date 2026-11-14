@@ -126,6 +126,7 @@ async function chooseFile(){
  el('previewWrap').classList.add('hidden');el('visionActions').classList.add('hidden');el('visionConsent').checked=false;
  const image=/^image\//.test(file.type)||/\.(png|jpg|jpeg|webp|tif|tiff)$/i.test(file.name);
  const pdf=/\.pdf$/i.test(file.name);
+ // Local preview only. createObjectURL returns a blob: URL, and this <img> does not run script from it (docs/security/ghas-alert-triage.md, alert 3).
  if(image){previewUrl=URL.createObjectURL(file);el('imagePreview').src=previewUrl;el('previewWrap').classList.remove('hidden');el('visionActions').classList.remove('hidden');el('logText').value='';notify('Image preview ready. Enter a verified transcript; no OCR is claimed.');}
  else if(pdf){
   el('logText').value='';
