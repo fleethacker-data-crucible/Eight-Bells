@@ -127,23 +127,43 @@ $script:running=$true
 $script:autoStop=((Test-EightBellsAutoStopEnabled) -and !$Stay)
 $script:tabs=@{}
 $script:startedAt=[DateTime]::UtcNow
-# Optional: read the AI key from Lazarette at start (EightBells-Vault.ps1). Off unless -Lazarette or EIGHTBELLS_LAZARETTE=1.
-# Only the item NAME is configured (EIGHTBELLS_LAZARETTE_ITEM_AI, default ai-api-key); the secret stays in memory.
+# Credentials: Lazarette, by item name, at start (EightBells-Vault.ps1). Only the item NAME is configured
+# (EIGHTBELLS_LAZARETTE_ITEM_AI, default ai-api-key). The secret stays in this process and is never returned.
+# A normal start reads the item when Lazarette is on this PC and already unlocked (Lazarette Lite has no lock).
+# -Lazarette or EIGHTBELLS_LAZARETTE=1 also asks in a visible console. The test service does not open a vault
+# unless that switch is set, so a developer machine's vault is never read by the tests.
 . (Join-Path $root 'EightBells-Vault.ps1')
 . (Join-Path $root 'EightBells-Credential.ps1')
 $script:vaultKey=''
 $script:vaultItem=Get-EnvSetting 'LAZARETTE_ITEM_AI'
 if([string]::IsNullOrEmpty($script:vaultItem)){$script:vaultItem='ai-api-key'}
-if($Lazarette -or (Get-EnvSetting 'LAZARETTE') -eq '1'){
-  try{$script:vaultKey=Get-EightBellsVaultSecret -ItemName $script:vaultItem -Interactive:(!$Background -and !$testMode)}
-  catch{Write-Warning ('Lazarette key not loaded: '+$_.Exception.Message);Diag ('Lazarette key not loaded: '+$_.Exception.Message)}
+$script:vaultState=@{found=$false;connected=$false;item=$script:vaultItem;message='Lazarette is not connected yet.'}
+$vaultRoot=Find-EightBellsLazaretteRoot
+if($vaultRoot){$script:vaultState.found=$true}
+$wantVault=$Lazarette -or ((Get-EnvSetting 'LAZARETTE') -eq '1')
+if($wantVault -or ((-not $testMode) -and $vaultRoot)){
+  try{
+    $script:vaultKey=Get-EightBellsVaultSecret -ItemName $script:vaultItem -Interactive:($wantVault -and !$Background -and !$testMode)
+    $script:vaultState.found=$true
+    $script:vaultState.connected=$true
+    $script:vaultState.message=('Connected. Item "'+$script:vaultItem+'" was read at start and is held in server memory only.')
+  }catch{
+    $script:vaultState.message=('Not connected yet. '+$_.Exception.Message)
+    if($wantVault){Write-Warning ('Lazarette key not loaded: '+$_.Exception.Message);Diag ('Lazarette key not loaded: '+$_.Exception.Message)}
+  }
+}elseif($vaultRoot){
+  $script:vaultState.message='Not connected yet. Lazarette is on this PC. Start Eight Bells with EightBells-CLI.bat -Lazarette from a visible console and unlock the vault.'
+}else{
+  $script:vaultState.message='Not connected yet. Lazarette was not found. Set LAZARETTE_PATH to its folder, or start with EightBells-CLI.bat -Lazarette.'
 }
 # If a browser was opened but never sent a heartbeat (closed before loading, or failed to open), stop after 2 minutes.
 $script:firstContactMs=if($NoBrowser){0}else{120000}
-$script:ai=@{endpoint='';model='';key='';router=$false;local=$true}
-# Opt-in intelligence router (Fairlead). Off unless a client asks for it; the router holds the provider keys, so no key is sent.
+# Intelligence defaults to Fairlead. EIGHTBELLS_AI_ENDPOINT_URL, then LLM_URL, is a manual chat endpoint
+# (HTTPS or local HTTP, no user info, no key from the environment). EIGHTBELLS_FAIRLEAD_URL moves the router
+# and must stay local HTTP. The provider key stays in Fairlead; this process sends only its own client key.
 $script:routerUrl=Get-EnvSetting 'FAIRLEAD_URL'
 if([string]::IsNullOrEmpty($script:routerUrl)){$script:routerUrl='http://127.0.0.1:8776/v1/chat/completions'}
+$script:ai=@{endpoint='';model='';key='';router=$false;local=$true}
 $bytes=New-Object byte[] 32
 $rng=[Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes);$rng.Dispose()
@@ -172,22 +192,112 @@ function Save-State($state){
 }
 function Audit($s,[string]$action,[string]$target){Add-EightBellsAuditEvent $s $action $target}
 function J($o){return (ConvertTo-Json -InputObject $o -Depth 70 -Compress)}
-# Headers for a model call. Manual mode: the typed or vault key. Router mode: this app's own Fairlead key, read from
-# Credential Manager for this call only (Fairlead/EightBells), and the local-only header unless the user chose otherwise.
-function Get-EightBellsModelHeaders{
-  $h=@{}
-  if($script:ai.router){
-    $k=Get-EightBellsFairleadKey -AllowTestKey:$testMode
-    if($k){$h['Authorization']='Bearer '+$k}
-    if($script:ai.local){$h['X-Fairlead-Privacy']='local'}
-  }elseif($script:ai.key){$h['Authorization']='Bearer '+$script:ai.key}
+function Test-EightBellsRouterUrl([string]$url){
+  $uri=$null
+  if(![Uri]::TryCreate($url,[UriKind]::Absolute,[ref]$uri)){return $false}
+  if($uri.UserInfo){return $false}
+  return ($uri.Scheme -eq 'http' -and ($uri.Host -in @('127.0.0.1','localhost')))
+}
+function Test-EightBellsManualUrl([string]$url){
+  $uri=$null
+  if(![Uri]::TryCreate($url,[UriKind]::Absolute,[ref]$uri)){return $false}
+  if($uri.UserInfo){return $false}
+  if($uri.Scheme -eq 'https'){return $true}
+  return ($uri.Scheme -eq 'http' -and ($uri.Host -in @('127.0.0.1','localhost')))
+}
+function Get-EightBellsModelName([string]$model){
+  if([string]::IsNullOrWhiteSpace($model)){return 'auto'}
+  $model=$model.Trim()
+  if($model.Length -gt 128 -or $model -notmatch '^[A-Za-z0-9._:/-]+$'){return 'auto'}
+  return $model
+}
+function Set-EightBellsRouterProvider([string]$model,[bool]$local){
+  $script:ai=@{endpoint=$script:routerUrl;model=(Get-EightBellsModelName $model);key='';router=$true;local=$local}
+}
+# Chat provider at start: a valid manual override, otherwise the local router. An invalid override is ignored.
+function Set-EightBellsDefaultProvider{
+  $override=Get-EnvSetting 'AI_ENDPOINT_URL'
+  if([string]::IsNullOrWhiteSpace($override)){$override=[Environment]::GetEnvironmentVariable('LLM_URL')}
+  if(![string]::IsNullOrWhiteSpace($override)){
+    if(Test-EightBellsManualUrl $override.Trim()){
+      $model=Get-EnvSetting 'AI_MODEL'
+      if([string]::IsNullOrWhiteSpace($model)){$model=[Environment]::GetEnvironmentVariable('LLM_MODEL')}
+      $script:ai=@{endpoint=$override.Trim();model=(Get-EightBellsModelName $model);key='';router=$false;local=$true}
+      return
+    }
+    Diag 'AI endpoint override ignored because it is not HTTPS or local HTTP, or it embeds credentials'
+  }
+  if(Test-EightBellsRouterUrl $script:routerUrl){Set-EightBellsRouterProvider 'auto' $true}
+  else{$script:ai=@{endpoint='';model='';key='';router=$false;local=$true}}
+}
+Set-EightBellsDefaultProvider
+# Fairlead audio routes share the router address. http://host/v1/chat/completions -> http://host/v1/audio/<kind>.
+function Get-EightBellsAudioUrl([string]$kind){
+  $u=$script:routerUrl.Trim().TrimEnd('/')
+  if($u -match '/chat/completions$'){$u=$u.Substring(0,$u.Length-('/chat/completions'.Length))}
+  elseif($u -notmatch '/v1$'){$u=$u+'/v1'}
+  return ($u+'/audio/'+$kind)
+}
+# Headers for a Fairlead call. The key is this app's client key (credential, else local token), read for this call
+# only. X-Fairlead-Label names the app. Local-only is the privacy header Fairlead uses to stay on this PC.
+function Get-EightBellsFairleadHeaders([bool]$Local){
+  $h=@{'X-Fairlead-Label'='EightBells'}
+  $k=Get-EightBellsFairleadKey -AllowTestKey:$testMode
+  if($k){$h['Authorization']='Bearer '+$k}
+  if($Local){$h['X-Fairlead-Privacy']='local'}
   return $h
+}
+# Headers for a model call. Manual mode: the typed or vault key. Router mode: the Fairlead client key.
+function Get-EightBellsModelHeaders{
+  if($script:ai.router){return (Get-EightBellsFairleadHeaders ([bool]$script:ai.local))}
+  $h=@{}
+  if($script:ai.key){$h['Authorization']='Bearer '+$script:ai.key}
+  return $h
+}
+# One POST to a loopback Fairlead route. The body is not logged. status 0 means Fairlead did not answer.
+function Invoke-EightBellsFairleadPost([string]$Url,[byte[]]$Body,[string]$ContentType,[hashtable]$Headers,[int]$MaxBytes){
+  $request=[Net.HttpWebRequest]::Create($Url)
+  $request.Method='POST'
+  $request.ContentType=$ContentType
+  $request.Proxy=$null
+  $request.AllowAutoRedirect=$false
+  $request.Timeout=90000
+  $request.ReadWriteTimeout=90000
+  $request.KeepAlive=$false
+  try{$request.ServicePoint.Expect100Continue=$false}catch{}
+  foreach($name in @($Headers.Keys)){
+    if($name -eq 'Authorization'){$request.Headers[[Net.HttpRequestHeader]::Authorization]=[string]$Headers[$name]}
+    else{$request.Headers.Add($name,[string]$Headers[$name])}
+  }
+  $request.ContentLength=$Body.Length
+  $response=$null
+  try{
+    $out=$request.GetRequestStream()
+    try{$out.Write($Body,0,$Body.Length)}finally{$out.Close()}
+    $response=$request.GetResponse()
+  }catch{
+    $ex=$_.Exception
+    while($ex -and -not ($ex -is [Net.WebException])){$ex=$ex.InnerException}
+    if($ex -and $ex.Response){$response=$ex.Response}else{return @{status=0;contentType='';bytes=New-Object byte[] 0}}
+  }
+  try{
+    $status=[int]$response.StatusCode
+    $ctype=[string]$response.ContentType
+    $ms=New-Object IO.MemoryStream
+    $src=$response.GetResponseStream()
+    $buf=New-Object byte[] 8192
+    while(($n=$src.Read($buf,0,$buf.Length)) -gt 0){
+      if(($ms.Length+$n) -gt $MaxBytes){throw 'Fairlead sent more than expected.'}
+      $ms.Write($buf,0,$n)
+    }
+    return @{status=$status;contentType=$ctype;bytes=$ms.ToArray()}
+  }finally{if($response){$response.Close()}}
 }
 # Plain-language reason for a failed model call. Never includes a key or any log text.
 function Get-EightBellsModelFailure($err,[string]$what){
   $code=0;try{if($err.Exception.Response){$code=[int]$err.Exception.Response.StatusCode}}catch{}
   if($script:ai.router){
-    if($code -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, then try again.'}
+    if($code -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.'}
     if($code -eq 0){return 'Fairlead did not answer on this PC. Start Fairlead, then try again.'}
     if($script:ai.local){return $what+' failed through Fairlead. With local-only on, Fairlead needs a local model; switch local-only off for synthetic data to use a cloud model.'}
     return $what+' failed through Fairlead (HTTP '+$code+'). Check the Fairlead request log.'
@@ -288,8 +398,8 @@ function Process-Http($req,$stream){
       $tc=New-Object Net.Sockets.TcpClient
       try{$iar=$tc.BeginConnect($ru.Host,$ru.Port,$null,$null);$reach=($iar.AsyncWaitHandle.WaitOne(800) -and $tc.Connected)}catch{$reach=$false}finally{$tc.Close()}
     }
-    $hasKey=[bool](Get-EightBellsFairleadKey -AllowTestKey:$testMode)
-    Reply $stream 200 (J @{url=$script:routerUrl;reachable=$reach;keyInstalled=$hasKey;keyTarget=(Get-EightBellsFairleadTarget);active=[bool]$script:ai.router;local=[bool]$script:ai.local;model=[string]$script:ai.model});return
+    $keyInfo=Get-EightBellsFairleadKeyInfo -AllowTestKey:$testMode
+    Reply $stream 200 (J @{url=$script:routerUrl;reachable=$reach;keyInstalled=[bool]$keyInfo.key;keySource=[string]$keyInfo.source;keyTarget=(Get-EightBellsFairleadTarget);active=[bool]$script:ai.router;local=[bool]$script:ai.local;model=[string]$script:ai.model;vault=$script:vaultState});return
   }
   if($req.method -eq 'GET' -and $path -eq '/api/audit/verify'){Reply $stream 200 (J (Test-EightBellsAuditChain @((Load-State).audit)));return}
   if($req.method -ne 'POST'){Reject $stream 404 'Unknown route';return}
@@ -332,15 +442,21 @@ function Process-Http($req,$stream){
   }
   if($path -eq '/api/ai/config'){
     if($obj.router -is [bool] -and $obj.router){
-      $ruri=$null
-      if(![Uri]::TryCreate($script:routerUrl,[UriKind]::Absolute,[ref]$ruri) -or $ruri.Scheme -ne 'http' -or $ruri.Host -notin @('127.0.0.1','localhost')){Reject $stream 400 'The router address must be a local HTTP address';return}
+      if(!(Test-EightBellsRouterUrl $script:routerUrl)){Reject $stream 400 'The router address must be a local HTTP address';return}
       # Local-only is the default. Only an explicit false lets Fairlead route to a cloud model (synthetic data only).
       $localOnly=!($obj.local -is [bool] -and !$obj.local)
-      $script:ai=@{endpoint=$script:routerUrl;model=$(if([string]::IsNullOrEmpty([string]$obj.model)){'auto'}else{[string]$obj.model});key='';router=$true;local=$localOnly}
+      Set-EightBellsRouterProvider ([string]$obj.model) $localOnly
       Reply $stream 200 (J @{configured=$true;router=$true;model=$script:ai.model;local=$localOnly});return
     }
+    $hasEndpoint=@($obj.PSObject.Properties.Name) -contains 'endpoint'
+    if($hasEndpoint -and [string]::IsNullOrWhiteSpace([string]$obj.endpoint)){
+      # Clear the manual provider and return to the router. An invalid router address leaves AI unset.
+      if(Test-EightBellsRouterUrl $script:routerUrl){Set-EightBellsRouterProvider 'auto' $true;Reply $stream 200 (J @{configured=$true;router=$true;model=$script:ai.model;local=$true});return}
+      $script:ai=@{endpoint='';model='';key='';router=$false;local=$true}
+      Reply $stream 200 (J @{configured=$false;router=$false});return
+    }
+    if(!$hasEndpoint){Reply $stream 200 (J @{configured=[bool]$script:ai.endpoint;router=[bool]$script:ai.router;model=[string]$script:ai.model;local=[bool]$script:ai.local});return}
     $endpoint=[string]$obj.endpoint
-    if(!$endpoint){$script:ai=@{endpoint='';model='';key='';router=$false;local=$true};Reply $stream 200 (J @{configured=$false});return}
     $uri=$null
     if(![Uri]::TryCreate($endpoint,[UriKind]::Absolute,[ref]$uri)){Reject $stream 400 'Invalid endpoint';return}
     if($uri.Scheme -ne 'https' -and !(($uri.Scheme -eq 'http') -and ($uri.Host -in @('127.0.0.1','localhost')))){Reject $stream 400 'Only HTTPS or local HTTP AI endpoints are allowed';return}
@@ -350,7 +466,7 @@ function Process-Http($req,$stream){
       Add-Member -InputObject $obj -NotePropertyName key -NotePropertyValue $script:vaultKey -Force
     }
     $script:ai=@{endpoint=$endpoint;model=[string]$obj.model;key=[string]$obj.key;router=$false;local=$true}
-    Reply $stream 200 (J @{configured=$true;model=$script:ai.model});return
+    Reply $stream 200 (J @{configured=$true;router=$false;model=$script:ai.model});return
   }
   if($path -eq '/api/vision'){
     if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved vision-capable AI endpoint first';return}
@@ -390,6 +506,59 @@ function Process-Http($req,$stream){
       Diag 'Manual AI request succeeded (no content logged)'
       Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
     }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 (Get-EightBellsModelFailure $_ 'AI request');return}
+  }
+  if($path -eq '/api/voice/speech'){
+    # TalkForge through Fairlead /v1/audio/speech. Same client key as chat. Always local-only: a turnover
+    # draft is not sent to a cloud voice because chat was allowed to use a cloud model. The page falls
+    # back to an on-device voice when this route fails. The text is not logged.
+    if($obj.consent -isnot [bool] -or $obj.consent -ne $true){Reject $stream 403 'Explicit consent required';return}
+    if(!(Test-EightBellsRouterUrl $script:routerUrl)){Reject $stream 400 'The router address must be a local HTTP address';return}
+    $said=([string]$obj.text).Trim()
+    if(!$said){Reject $stream 400 'Nothing to read.';return}
+    if($said.Length -gt 8000){Reject $stream 413 'Turnover text is too long to read aloud.';return}
+    $voiceName=([string]$obj.voice).Trim()
+    if($voiceName -and $voiceName -notmatch '^[A-Za-z0-9._-]{1,80}$'){Reject $stream 400 'The voice name is not allowed.';return}
+    $payload=[ordered]@{model='auto';input=$said;response_format='wav'}
+    if($voiceName){$payload.voice=$voiceName}
+    $raw=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $payload -Compress))
+    try{
+      $spoke=Invoke-EightBellsFairleadPost (Get-EightBellsAudioUrl 'speech') $raw 'application/json; charset=utf-8' (Get-EightBellsFairleadHeaders $true) 2000000
+    }catch{Diag 'Voice speech failed (no text logged)';Reject $stream 502 'Fairlead could not read this aloud.';return}
+    if($spoke.status -eq 0){Diag 'Voice speech: Fairlead did not answer';Reject $stream 503 'Fairlead did not answer on this PC. Start Fairlead, then try again.';return}
+    if($spoke.status -in 401,403){Diag 'Voice speech refused';Reject $stream 502 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.';return}
+    if($spoke.status -ne 200 -or [string]$spoke.contentType -notmatch '^audio/'){Diag ('Voice speech failed (HTTP '+$spoke.status+')');Reject $stream 502 'Fairlead did not return audio. With local-only on, Fairlead needs a local speech model.';return}
+    Diag 'Voice speech completed (no text logged)'
+    Reply $stream 200 (J @{audio=[Convert]::ToBase64String($spoke.bytes);mime='audio/wav';verified=$false;via='fairlead'});return
+  }
+  if($path -eq '/api/voice/transcriptions'){
+    # Whisper through Fairlead /v1/audio/transcriptions. The page sends base64; this process builds the
+    # multipart body Fairlead expects. Always local-only. Audio and the transcript are not logged.
+    if($obj.consent -isnot [bool] -or $obj.consent -ne $true){Reject $stream 403 'Explicit consent required';return}
+    if(!(Test-EightBellsRouterUrl $script:routerUrl)){Reject $stream 400 'The router address must be a local HTTP address';return}
+    $mime=([string]$obj.mime).Split(';')[0].Trim().ToLowerInvariant()
+    if($mime -notin @('audio/webm','audio/wav','audio/mpeg','audio/ogg','audio/mp4')){Reject $stream 400 'Only WebM, WAV, MPEG, Ogg and MP4 audio are supported';return}
+    $encoded=[string]$obj.base64
+    if(!$encoded -or $encoded.Length -gt 1400000){Reject $stream 413 'Dictation audio is too large.';return}
+    try{$audio=[Convert]::FromBase64String($encoded)}catch{Reject $stream 400 'Invalid audio encoding';return}
+    if($audio.Length -gt 1000000){Reject $stream 413 'Dictation audio must be under 1MB';return}
+    $boundary='----EightBells'+[guid]::NewGuid().ToString('N')
+    $fileName=switch($mime){'audio/wav'{'dictation.wav'}'audio/mpeg'{'dictation.mp3'}'audio/ogg'{'dictation.ogg'}'audio/mp4'{'dictation.m4a'}default{'dictation.webm'}}
+    $pre=[Text.Encoding]::UTF8.GetBytes('--'+$boundary+"`r`nContent-Disposition: form-data; name=`"file`"; filename=`""+$fileName+"`"`r`nContent-Type: "+$mime+"`r`n`r`n")
+    $post=[Text.Encoding]::UTF8.GetBytes("`r`n--"+$boundary+"`r`nContent-Disposition: form-data; name=`"model`"`r`n`r`nauto`r`n--"+$boundary+"--`r`n")
+    $form=New-Object byte[] ($pre.Length+$audio.Length+$post.Length)
+    [System.Buffer]::BlockCopy($pre,0,$form,0,$pre.Length)
+    [System.Buffer]::BlockCopy($audio,0,$form,$pre.Length,$audio.Length)
+    [System.Buffer]::BlockCopy($post,0,$form,($pre.Length+$audio.Length),$post.Length)
+    try{
+      $heard=Invoke-EightBellsFairleadPost (Get-EightBellsAudioUrl 'transcriptions') $form ('multipart/form-data; boundary='+$boundary) (Get-EightBellsFairleadHeaders $true) 1000000
+    }catch{Diag 'Voice transcription failed (no audio logged)';Reject $stream 502 'Fairlead could not transcribe this clip.';return}
+    if($heard.status -eq 0){Diag 'Voice transcription: Fairlead did not answer';Reject $stream 503 'Fairlead did not answer on this PC. Start Fairlead, then try again.';return}
+    if($heard.status -in 401,403){Diag 'Voice transcription refused';Reject $stream 502 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.';return}
+    $transcript=''
+    if($heard.status -eq 200){try{$transcript=[string](([Text.Encoding]::UTF8.GetString($heard.bytes))|ConvertFrom-Json).text}catch{$transcript=''}}
+    if(!$transcript){Diag ('Voice transcription failed (HTTP '+$heard.status+')');Reject $stream 502 'Fairlead returned no transcription. With local-only on, Fairlead needs a local transcription model.';return}
+    Diag 'Voice transcription completed (no text logged)'
+    Reply $stream 200 (J @{text=$transcript;verified=$false;via='fairlead'});return
   }
   if($path -eq '/api/shutdown'){$script:running=$false;Diag 'End session requested from the browser';Reply $stream 200 (J @{ok=$true});return}
   Reject $stream 404 'Unknown route'

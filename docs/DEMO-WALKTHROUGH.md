@@ -40,7 +40,7 @@ Each of these exists only once its pull request is merged. Record them only for 
 | PDF text | PDF PR | Choose `samples/synthetic_watch.pdf`. Show the text appear and the "unverified" notice. | "A digital PDF's text layer is read. It is not OCR: a scanned page gives no text, and the text must be checked before import." |
 | More log formats | E-log adapters PR | Choose `samples/elog_export.jsonl`, then `samples/elog_export.xml`. | "JSON Lines, delimited tables and XML exports are read the same way. These are generic field names, not a real vendor format." |
 | Reading rules | Watch-profile PR | Paste `samples/readings_profile_check.csv`, load `samples/profile_engineering_synthetic.json`, show the new findings. | "A profile you write says which readings a watch must record. Eight Bells ships no limits; this sample is synthetic." |
-| Read aloud | Voice PR | Generate a draft, click **Read aloud**. | "It speaks with an on-device Windows voice only. An online voice is refused." |
+| Read aloud | Voice | Generate a draft, click **Read aloud**. | "It asks Fairlead on this PC first. If Fairlead is not answering, it uses an on-device Windows voice. An online voice is refused." |
 | Lessons to Halyard | Halyard-export PR | In Memory, mark a lesson reviewed, click **Export reviewed lessons for Halyard**. | "Reviewed lessons become backlog proposals for Halyard's sandbox. Sizing stays to be decided." |
 
 Do **not** record: the Fairlead router or the Lazarette key option (they need live services and a real vault), or any AI draft unless a local model is running and the data is synthetic.

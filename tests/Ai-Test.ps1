@@ -10,9 +10,11 @@ try{
   $url=$svc.Url
 
   # ---- configuration rules ----
-  Assert-True ((Invoke-RestMethod -Uri "$url/api/diagnostics" -Headers $svc.Headers).aiConfigured -eq $false) 'AI must be off until configured'
-  Assert-HttpStatus {Post-Json $svc '/api/ai/run' @{logId='x';consent=$true}} 400 'AI run before configuration'
-  Assert-HttpStatus {Post-Json $svc '/api/vision' @{mime='image/png';base64='AAAA';consent=$true}} 400 'Vision before configuration'
+  # Do not call /api/ai/run here: the default provider is the real Fairlead port, and this test must not contact it.
+  $st=Invoke-RestMethod -Uri "$url/api/ai/router" -Headers $svc.Headers
+  Assert-True ($st.active -eq $true -and $st.local -eq $true -and $st.model -eq 'auto' -and $st.url -eq 'http://127.0.0.1:8776/v1/chat/completions') 'AI defaults to the local Fairlead router'
+  Assert-True ((Invoke-RestMethod -Uri "$url/api/diagnostics" -Headers $svc.Headers).aiConfigured -eq $true) 'The default router counts as configured'
+  Assert-HttpStatus {Post-Json $svc '/api/vision' @{mime='image/png';base64='AAAA'}} 403 'Vision without consent'
   Assert-HttpStatus {Post-Json $svc '/api/ai/config' @{endpoint='not a url';model='m'}} 400 'Malformed endpoint'
   Assert-HttpStatus {Post-Json $svc '/api/ai/config' @{endpoint='http://example.invalid/v1/chat/completions';model='m'}} 400 'Plain HTTP to a non-loopback host'
   Assert-HttpStatus {Post-Json $svc '/api/ai/config' @{endpoint='ftp://127.0.0.1/x';model='m'}} 400 'Non-HTTP scheme'
@@ -20,7 +22,7 @@ try{
   $cfg=Post-Json $svc '/api/ai/config' @{endpoint='https://models.example.invalid/v1/chat/completions';model='m'}
   Assert-True ($cfg.configured -eq $true) 'HTTPS endpoint should be accepted'
   $cleared=Post-Json $svc '/api/ai/config' @{endpoint=''}
-  Assert-True ($cleared.configured -eq $false) 'Empty endpoint clears the configuration'
+  Assert-True ($cleared.configured -eq $true -and $cleared.router -eq $true -and $cleared.model -eq 'auto') 'An empty endpoint returns to the router default'
   $cfg=Post-Json $svc '/api/ai/config' @{endpoint=$fake.Endpoint;model='synthetic-model';key='synthetic-key-123'}
   Assert-True ($cfg.configured -eq $true -and $cfg.model -eq 'synthetic-model') 'Loopback HTTP endpoint should be accepted'
   Assert-True (-not ($cfg|ConvertTo-Json).Contains('synthetic-key-123')) 'Config response must not echo the key'

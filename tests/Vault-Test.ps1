@@ -51,6 +51,9 @@ try{
   Assert-True ($seen[$seen.Count-1].auth -eq 'Bearer fake-secret-for-test-item') 'The model call must carry the key from the configured item name'
   $state=Invoke-RestMethod -Uri ($svc.Url+'/api/state') -Headers $svc.Headers
   Assert-True (-not (($state|ConvertTo-Json -Depth 30).Contains('fake-secret'))) 'The vault key must never be stored'
+  $router=Invoke-RestMethod -Uri ($svc.Url+'/api/ai/router') -Headers $svc.Headers
+  Assert-True ($router.vault.connected -eq $true -and $router.vault.item -eq 'test-item' -and $router.vault.message -match 'Connected') 'Router status reports Lazarette connected by item name'
+  Assert-True (-not (($router|ConvertTo-Json -Depth 6).Contains('fake-secret'))) 'Router status must not contain the vault secret'
   # A hand-typed key still works, and a non-boolean flag does not select the vault.
   $null=Post-Json $svc '/api/ai/config' @{endpoint=$fake.Endpoint;model='m';key='manual-key'}
   $null=Post-Json $svc '/api/ai/run' @{logId=$log.id;consent=$true}
@@ -67,6 +70,8 @@ try{
   Stop-TestProcess $svc;$svc=$null
   $svc=Start-TestService $Root $sandbox 'synthetic-vault-test-token-654' @{LAZARETTE_PATH=$fakeLaz;FAKE_LAZARETTE_UNLOCKED='1'}
   Assert-HttpStatus {Post-Json $svc '/api/ai/config' @{endpoint=$fake.Endpoint;model='m';useVault=$true}} 400 'Vault key requested while the feature is off'
+  $off=Invoke-RestMethod -Uri ($svc.Url+'/api/ai/router') -Headers $svc.Headers
+  Assert-True ($off.vault.connected -eq $false -and $off.vault.message -match 'Not connected yet') 'The test service does not read Lazarette unless asked'
   Write-Host 'PASS: a locked vault or the feature being off gives a clear 400 and the server still starts'
 }finally{
   foreach($n in $names){[Environment]::SetEnvironmentVariable($n,$saved[$n])}

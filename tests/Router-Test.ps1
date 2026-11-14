@@ -1,23 +1,23 @@
 param([string]$Root=(Split-Path -Parent $PSScriptRoot))
-# Opt-in intelligence router (Fairlead): off by default, local-only when on, manual endpoint unchanged.
+# Intelligence router (Fairlead): on by default, local-only, manual endpoint is the override.
 # Uses a fake loopback model in place of the router; no live Fairlead is needed.
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 $sandbox=New-TestSandbox
-$svc=$null;$fake=$null;$other=$null;$deny=$null;$nokey=$null
+$svc=$null;$fake=$null;$other=$null;$deny=$null;$nokey=$null;$over=$null;$tok=$null
 try{
   $fake=Start-FakeLlm $Root $sandbox 'ok'
   $svc=Start-TestService $Root $sandbox 'synthetic-router-test-token-321' @{EIGHTBELLS_FAIRLEAD_URL=$fake.Endpoint;EIGHTBELLS_TEST_FAIRLEAD_KEY='synthetic-fairlead-key-1'}
   $url=$svc.Url
 
-  # ---- off by default and the manual endpoint still works ----
-  Assert-HttpStatus {Post-Json $svc '/api/ai/run' @{logId='x';consent=$true}} 400 'Model call before any configuration (router must be off by default)'
+  # ---- the router is the provider at start; a non-boolean flag does not change it ----
+  $st=Invoke-RestMethod -Uri ($svc.Url+'/api/ai/router') -Headers $svc.Headers
+  Assert-True ($st.active -eq $true -and $st.local -eq $true -and $st.model -eq 'auto' -and $st.url -eq $fake.Endpoint -and $st.keySource -eq 'credential-manager') 'The router is the provider at start'
   $r=Post-Json $svc '/api/ai/config' @{router='true'}
-  Assert-True ($r.configured -eq $false) 'A non-boolean router flag must not enable router mode'
-  Assert-HttpStatus {Post-Json $svc '/api/ai/run' @{logId='x';consent=$true}} 400 'Model call after a non-boolean router flag'
-  Write-Host 'PASS: router is off by default and a non-boolean flag does not enable it'
+  Assert-True ($r.configured -eq $true -and $r.router -eq $true) 'A non-boolean router flag must not leave the router'
+  Write-Host 'PASS: router is the default and a non-boolean flag does not change it'
 
-  # ---- router mode: local address, default model name, no key ----
+  # ---- router mode: local address, default model name, no provider key ----
   $r=Post-Json $svc '/api/ai/config' @{router=$true}
   Assert-True ($r.configured -eq $true -and $r.router -eq $true -and $r.model -eq 'auto') 'Router mode should configure the default model name'
   Write-Host 'PASS: router mode configures from the local router address'
@@ -69,7 +69,7 @@ try{
   $deny=Start-FakeLlm $Root $sandbox 'deny'
   $nokey=Start-TestService $Root $sandbox 'synthetic-router-test-token-323' @{EIGHTBELLS_FAIRLEAD_URL=$deny.Endpoint;EIGHTBELLS_TEST_FAIRLEAD_KEY='(none)'}
   $st=Invoke-RestMethod -Uri ($nokey.Url+'/api/ai/router') -Headers $nokey.Headers
-  Assert-True ($st.keyInstalled -eq $false) 'Status must say the key is not installed'
+  Assert-True ($st.keyInstalled -eq $false -and $st.keySource -eq 'none') 'Status must say the key is not installed'
   $null=Post-Json $nokey '/api/ai/config' @{router=$true}
   $log2=Post-Json $nokey '/api/import' @{name='Synthetic router log 2';watch='Engineering';content='0800 Synthetic entry';format='text';entries=@(@{line=1;time='08:00';text='Synthetic entry';issue=$false;resolution=$false});analysis=@{score=100;findings=@();open=@()}}
   $msg=''
@@ -79,8 +79,34 @@ try{
   $seen=@(Get-LlmRequests $deny)
   Assert-True ($seen.Count -eq 1 -and $seen[0].auth -eq '') 'Without an installed key no Authorization header is sent'
   Write-Host 'PASS: no installed key sends no header, and a refusal explains how to install one'
+
+  # ---- a manual endpoint override replaces the router; the app-specific name beats LLM_URL ----
+  $before=@(Get-LlmRequests $fake).Count
+  $over=Start-TestService $Root $sandbox 'synthetic-router-test-token-324' @{EIGHTBELLS_FAIRLEAD_URL='http://127.0.0.1:9/v1/chat/completions';EIGHTBELLS_AI_ENDPOINT_URL=$fake.Endpoint;LLM_URL='http://127.0.0.1:9/v1/chat/completions';EIGHTBELLS_TEST_FAIRLEAD_KEY='synthetic-fairlead-key-1'}
+  $st=Invoke-RestMethod -Uri ($over.Url+'/api/ai/router') -Headers $over.Headers
+  Assert-True ($st.active -eq $false) 'An endpoint override leaves the router inactive'
+  $log3=Post-Json $over '/api/import' @{name='Synthetic override log';watch='Engineering';content='0800 Synthetic entry';format='text';entries=@(@{line=1;time='08:00';text='Synthetic entry';issue=$false;resolution=$false});analysis=@{score=100;findings=@();open=@()}}
+  $null=Post-Json $over '/api/ai/run' @{logId=$log3.id;consent=$true}
+  $seen=@(Get-LlmRequests $fake)
+  Assert-True ($seen.Count -eq ($before+1)) 'The override is the only new upstream call'
+  $last=$seen[$seen.Count-1]
+  Assert-True ($last.path -eq '/v1/chat/completions' -and $last.privacy -eq '' -and $last.auth -eq '') 'The override sends no Fairlead header and no client key'
+  Write-Host 'PASS: EIGHTBELLS_AI_ENDPOINT_URL overrides the router and beats LLM_URL'
+
+  # ---- the local token is the client key when Credential Manager has none ----
+  $tokenFile=Join-Path $sandbox 'local-token.txt'
+  Set-Content -LiteralPath $tokenFile -Value 'synthetic-local-token-1' -Encoding ascii
+  $tok=Start-TestService $Root $sandbox 'synthetic-router-test-token-325' @{EIGHTBELLS_FAIRLEAD_URL=$fake.Endpoint;EIGHTBELLS_TEST_FAIRLEAD_KEY='(none)';EIGHTBELLS_TEST_LOCAL_TOKEN_FILE=$tokenFile}
+  $st=Invoke-RestMethod -Uri ($tok.Url+'/api/ai/router') -Headers $tok.Headers
+  Assert-True ($st.keyInstalled -eq $true -and $st.keySource -eq 'local-token') 'The local token counts as an installed key'
+  Assert-True (-not (($st|ConvertTo-Json).Contains('synthetic-local-token'))) 'Router status must never contain the local token'
+  $log4=Post-Json $tok '/api/import' @{name='Synthetic token log';watch='Engineering';content='0800 Synthetic entry';format='text';entries=@(@{line=1;time='08:00';text='Synthetic entry';issue=$false;resolution=$false});analysis=@{score=100;findings=@();open=@()}}
+  $null=Post-Json $tok '/api/ai/run' @{logId=$log4.id;consent=$true}
+  $seen=@(Get-LlmRequests $fake)
+  Assert-True ($seen[$seen.Count-1].auth -eq 'Bearer synthetic-local-token-1' -and $seen[$seen.Count-1].label -eq 'EightBells') 'Router mode sends the local token and the app label'
+  Write-Host 'PASS: local token is used when no credential is installed'
 }finally{
-  Stop-TestProcess $svc;Stop-TestProcess $fake;Stop-TestProcess $other;Stop-TestProcess $deny;Stop-TestProcess $nokey
+  Stop-TestProcess $svc;Stop-TestProcess $fake;Stop-TestProcess $other;Stop-TestProcess $deny;Stop-TestProcess $nokey;Stop-TestProcess $over;Stop-TestProcess $tok
   Start-Sleep -Milliseconds 300
   Remove-Item -LiteralPath $sandbox -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -58,10 +58,10 @@ Notes:
 
 ## Intelligence router
 
-Direction (2026-10-26): Fleet tools stop hard-coding external endpoints and default to the Fleet intelligence router, [Fairlead](https://github.com/fleethacker-data-crucible/Fairlead), for AI/LLM endpoints, git repository access and database connections. Fairlead will own endpoint selection, credentials (through Lazarette / Windows Credential Manager, never in tool config), policy and routing. Until Eight Bells is moved behind it, the current settings in the table below stay as they are; nothing has changed in code yet.
+Direction (2026-10-26): Fleet tools stop hard-coding external endpoints and default to the Fleet intelligence router, [Fairlead](https://github.com/fleethacker-data-crucible/Fairlead), for AI/LLM endpoints, git repository access and database connections. Fairlead owns endpoint selection, credentials (through Lazarette / Windows Credential Manager, never in tool config), policy and routing. Eight Bells now defaults chat to Fairlead. Git and database access are unchanged: this app has neither.
 
 | Access | Today | Where | Settings |
 | --- | --- | --- | --- |
-| AI/LLM | OpenAI-compatible chat completions entered by hand in Settings → "AI provider · Manual"; no default, held in memory only | `Start-EightBells.ps1:131` (config `:281-289`, requests `:307`, `:325`); UI `web/index.html:66` | UI fields endpoint, model, key (`POST /api/ai/config`); no environment variables |
+| AI/LLM | Fairlead chat completions on `http://127.0.0.1:8776/v1/chat/completions`, model `auto`, local-only. A manual HTTPS or local-HTTP endpoint is the override. The client key is `Fairlead/EightBells` or the Fairlead local token. Speech and transcription use Fairlead `/v1/audio/speech` and `/v1/audio/transcriptions` | `Start-EightBells.ps1` (default provider, `POST /api/ai/config`, `POST /api/ai/run`, `POST /api/voice/speech`, `POST /api/voice/transcriptions`); UI `web/index.html` | `EIGHTBELLS_FAIRLEAD_URL` (local HTTP router address), `EIGHTBELLS_AI_ENDPOINT_URL` then `LLM_URL` (manual chat URL), `EIGHTBELLS_AI_MODEL` then `LLM_MODEL`. No key in an environment variable |
 | Git repositories | none |  |  |
 | Databases | none |  |  |

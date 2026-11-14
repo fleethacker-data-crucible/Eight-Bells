@@ -31,10 +31,12 @@ function Get-EightBellsExcludedRoutes{
   return @(
     [ordered]@{route='GET /health';reason='Liveness probe of a running server; the CLI has no server.'}
     [ordered]@{route='GET /api/diagnostics';reason='Reads the running server log lines; the CLI has no service log.'}
-    [ordered]@{route='GET /api/ai/router';reason='Status of the running server''s router connection (is Fairlead answering, is this app''s key installed); the CLI has no server.'}
+    [ordered]@{route='GET /api/ai/router';reason='Status of the running server''s router connection (is Fairlead answering, is this app''s key installed, is Lazarette connected); the CLI has no server. The body never contains a key.'}
     [ordered]@{route='POST /api/ai/config';reason='Session-bound: the endpoint and key exist only in the running server''s memory.'}
     [ordered]@{route='POST /api/ai/run';reason='Session-bound: needs the endpoint and key held by the running server, and per-request consent in the page.'}
     [ordered]@{route='POST /api/vision';reason='Session-bound: needs the endpoint and key held by the running server, and per-image consent in the page.'}
+    [ordered]@{route='POST /api/voice/speech';reason='Session-bound: reads a turnover aloud through the running server''s Fairlead connection. The CLI has no server; on-device reading stays in the page.'}
+    [ordered]@{route='POST /api/voice/transcriptions';reason='Session-bound: dictation audio is sent by the page through the running server. The CLI has no microphone.'}
     [ordered]@{route='POST /api/heartbeat';reason='Tab lifecycle of the browser; the CLI has no tab.'}
     [ordered]@{route='POST /api/shutdown';reason='Stops the running server; use Stop-EightBells.ps1 from the shell.'}
   )
