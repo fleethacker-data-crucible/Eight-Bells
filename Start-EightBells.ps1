@@ -256,62 +256,8 @@ function Get-EightBellsModelHeaders{
   if($script:ai.key -and -not $script:ai.router){$h['Authorization']='Bearer '+$script:ai.key}
   return $h
 }
-# Why a Fairlead HTTP status is not a usable answer. 3xx is a failure: the request is not followed, so the key stays on the first host.
-function Get-EightBellsRouterFailure([int]$Status,[string]$What){
-  if($Status -ge 300 -and $Status -lt 400){return 'Fairlead redirected the request, so it was not followed.'}
-  if($Status -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.'}
-  if($Status -eq 0){return 'Fairlead did not answer on this PC. Start Fairlead, then try again.'}
-  return $What+' failed through Fairlead (HTTP '+$Status+'). Check the Fairlead request log.'
-}
-# Identity check first. The key is attached only when that returns nothing. No proxy and no redirect.
-function Invoke-EightBellsRouterRequest([string]$Url,[byte[]]$Body,[string]$ContentType,[bool]$Local,[int]$MaxBytes){
-  $why=Test-EightBellsFairleadIdentity -Url $script:routerUrl
-  if($why){return @{ok=$false;status=0;bytes=(New-Object byte[] 0);contentType='';message=$why}}
-  $posted=Invoke-EightBellsFairleadPost $Url $Body $ContentType (Get-EightBellsFairleadHeaders $Local) $MaxBytes
-  $msg=''
-  if($posted.status -ne 200){$msg=Get-EightBellsRouterFailure $posted.status 'The request'}
-  return @{ok=($posted.status -eq 200);status=$posted.status;bytes=$posted.bytes;contentType=[string]$posted.contentType;message=$msg}
-}
-# One POST to a loopback Fairlead route. The body is not logged. status 0 means Fairlead did not answer.
-# Proxy is off and redirects are not followed, so a 3xx cannot carry the key anywhere else.
-function Invoke-EightBellsFairleadPost([string]$Url,[byte[]]$Body,[string]$ContentType,[hashtable]$Headers,[int]$MaxBytes){
-  $request=[Net.HttpWebRequest]::Create($Url)
-  $request.Method='POST'
-  $request.ContentType=$ContentType
-  $request.Proxy=$null
-  $request.AllowAutoRedirect=$false
-  $request.Timeout=90000
-  $request.ReadWriteTimeout=90000
-  $request.KeepAlive=$false
-  try{$request.ServicePoint.Expect100Continue=$false}catch{}
-  foreach($name in @($Headers.Keys)){
-    if($name -eq 'Authorization'){$request.Headers[[Net.HttpRequestHeader]::Authorization]=[string]$Headers[$name]}
-    else{$request.Headers.Add($name,[string]$Headers[$name])}
-  }
-  $request.ContentLength=$Body.Length
-  $response=$null
-  try{
-    $out=$request.GetRequestStream()
-    try{$out.Write($Body,0,$Body.Length)}finally{$out.Close()}
-    $response=$request.GetResponse()
-  }catch{
-    $ex=$_.Exception
-    while($ex -and -not ($ex -is [Net.WebException])){$ex=$ex.InnerException}
-    if($ex -and $ex.Response){$response=$ex.Response}else{return @{status=0;contentType='';bytes=New-Object byte[] 0}}
-  }
-  try{
-    $status=[int]$response.StatusCode
-    $ctype=[string]$response.ContentType
-    $ms=New-Object IO.MemoryStream
-    $src=$response.GetResponseStream()
-    $buf=New-Object byte[] 8192
-    while(($n=$src.Read($buf,0,$buf.Length)) -gt 0){
-      if(($ms.Length+$n) -gt $MaxBytes){throw 'Fairlead sent more than expected.'}
-      $ms.Write($buf,0,$n)
-    }
-    return @{status=$status;contentType=$ctype;bytes=$ms.ToArray()}
-  }finally{if($response){$response.Close()}}
-}
+# Chat, vision, speech, and transcription call Invoke-EightBellsRouterRequest in EightBells-Fairlead.ps1.
+# That checks /__fleethacker/id before the client key is attached, then POSTs with no proxy and no redirect.
 function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){ReplyBytes $stream $status ([Text.Encoding]::UTF8.GetBytes($body)) $mime}
 function ReplyBytes($stream,[int]$status,[byte[]]$data,[string]$mime){
   $reason=switch($status){200{'OK'}201{'Created'}400{'Bad Request'}401{'Unauthorized'}403{'Forbidden'}404{'Not Found'}413{'Payload Too Large'}500{'Internal Server Error'}default{'Error'}}

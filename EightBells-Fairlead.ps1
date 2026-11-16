@@ -73,16 +73,21 @@ function Get-EightBellsListenerPids([int]$Port){
   if($script:EightBellsListenerLookup){return @(& $script:EightBellsListenerLookup $Port)}
   return @([EightBellsPortOwner]::GetListenerPids($Port))
 }
+# The -File / -f script on a PowerShell command line, or '' when there is none. Never a substring of a longer path.
+function Get-EightBellsScriptPathFromCommandLine([string]$CommandLine){
+  if(-not $CommandLine){return ''}
+  $m=[regex]::Match($CommandLine,'(?i)(?:^|\s)[-/](?:file|f)\s+(?:"([^"]+)"|(\S+))')
+  if(-not $m.Success){return ''}
+  if($m.Groups[1].Success){return $m.Groups[1].Value}
+  return $m.Groups[2].Value
+}
 # Tests replace this with { param($ProcessId) -> @{ ExecutablePath; ScriptPath } }.
 function Get-EightBellsProcessPaths([int]$ProcessId){
   if($script:EightBellsProcessLookup){return (& $script:EightBellsProcessLookup $ProcessId)}
   $p=$null
   try{$p=Get-CimInstance -ClassName Win32_Process -Filter ('ProcessId = '+$ProcessId) -ErrorAction Stop}catch{$p=$null}
   if(-not $p){return @{ExecutablePath='';ScriptPath=''}}
-  $file=''
-  $m=[regex]::Match([string]$p.CommandLine,'(?i)(?:^|\s)[-/](?:file|f)\s+(?:"([^"]+)"|(\S+))')
-  if($m.Success){if($m.Groups[1].Success){$file=$m.Groups[1].Value}else{$file=$m.Groups[2].Value}}
-  return @{ExecutablePath=[string]$p.ExecutablePath;ScriptPath=$file}
+  return @{ExecutablePath=[string]$p.ExecutablePath;ScriptPath=(Get-EightBellsScriptPathFromCommandLine ([string]$p.CommandLine))}
 }
 # An absolute Windows path, normalized, or '' when it is not one. Never a bare name.
 function ConvertTo-EightBellsNormalPath([string]$Path){
@@ -138,17 +143,19 @@ function Test-EightBellsFairleadIdentity([string]$Url){
     if($text.Length -gt 4096){return $notFairlead}
     $id=$null
     try{$id=$text.TrimStart([char]0xFEFF).Trim()|ConvertFrom-Json}catch{return $notFairlead}
-    $tool=[string]$id.tool
+    $names=@($id.PSObject.Properties.Name)
+    $tool=if($names -contains 'tool'){[string]$id.tool}else{''}
     if($tool -cne 'fairlead'){
       $who='something else'
       if($tool -cmatch '\A[A-Za-z0-9._-]{1,40}\z'){$who='"'+$tool+'"'}
       return ('The program at 127.0.0.1:'+$port+' is '+$who+', not Fairlead, so the key was not sent.')
     }
     $idPid=0
-    if(-not [int]::TryParse([string]$id.pid,[ref]$idPid) -or $idPid -ne $owner){
+    $pidText=if($names -contains 'pid'){[string]$id.pid}else{''}
+    if(-not [int]::TryParse($pidText,[ref]$idPid) -or $idPid -ne $owner){
       return ('The program on port '+$port+' is not the one that answered the identity check, so the key was not sent.')
     }
-    $reported=[string]$id.path
+    $reported=if($names -contains 'path'){[string]$id.path}else{''}
     if(-not $reported -or -not (Test-EightBellsProcessPath -ProcessId $owner -Path $reported)){
       return ('The program on port '+$port+' reported a path that is not the program holding the port, so the key was not sent.')
     }
@@ -156,4 +163,62 @@ function Test-EightBellsFairleadIdentity([string]$Url){
   }catch{
     return ('The program at 127.0.0.1:'+$port+' did not identify itself as Fairlead, so the key was not sent.')
   }finally{if($null -ne $resp){try{$resp.Close()}catch{}}}
+}
+# Why a Fairlead HTTP status is not a usable answer. 3xx is a failure: the request is not followed, so the key stays on the first host.
+function Get-EightBellsRouterFailure([int]$Status,[string]$What){
+  if($Status -ge 300 -and $Status -lt 400){return 'Fairlead redirected the request, so it was not followed.'}
+  if($Status -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.'}
+  if($Status -eq 0){return 'Fairlead did not answer on this PC. Start Fairlead, then try again.'}
+  return $What+' failed through Fairlead (HTTP '+$Status+'). Check the Fairlead request log.'
+}
+# Identity check first. The key is attached only when that returns nothing. No proxy and no redirect.
+# Get-EightBellsFairleadHeaders is defined by the server and is not called when the check fails.
+function Invoke-EightBellsRouterRequest([string]$Url,[byte[]]$Body,[string]$ContentType,[bool]$Local,[int]$MaxBytes){
+  $why=Test-EightBellsFairleadIdentity -Url $script:routerUrl
+  if($why){return @{ok=$false;status=0;bytes=(New-Object byte[] 0);contentType='';message=$why}}
+  $posted=Invoke-EightBellsFairleadPost $Url $Body $ContentType (Get-EightBellsFairleadHeaders $Local) $MaxBytes
+  $msg=''
+  if($posted.status -ne 200){$msg=Get-EightBellsRouterFailure $posted.status 'The request'}
+  return @{ok=($posted.status -eq 200);status=$posted.status;bytes=$posted.bytes;contentType=[string]$posted.contentType;message=$msg}
+}
+# One POST to a loopback Fairlead route. The body is not logged. status 0 means Fairlead did not answer.
+# Proxy is off and redirects are not followed, so a 3xx cannot carry the key anywhere else.
+function Invoke-EightBellsFairleadPost([string]$Url,[byte[]]$Body,[string]$ContentType,[hashtable]$Headers,[int]$MaxBytes){
+  $request=[Net.HttpWebRequest]::Create($Url)
+  $request.Method='POST'
+  $request.ContentType=$ContentType
+  $request.Proxy=$null
+  $request.AllowAutoRedirect=$false
+  $request.Timeout=90000
+  $request.ReadWriteTimeout=90000
+  $request.KeepAlive=$false
+  try{$request.ServicePoint.Expect100Continue=$false}catch{}
+  foreach($name in @($Headers.Keys)){
+    if($name -eq 'Authorization'){$request.Headers[[Net.HttpRequestHeader]::Authorization]=[string]$Headers[$name]}
+    else{$request.Headers.Add($name,[string]$Headers[$name])}
+  }
+  $request.ContentLength=$Body.Length
+  $response=$null
+  try{
+    $out=$request.GetRequestStream()
+    try{$out.Write($Body,0,$Body.Length)}finally{$out.Close()}
+    $response=$request.GetResponse()
+  }catch{
+    $ex=$_.Exception
+    while($ex -and -not ($ex -is [Net.WebException])){$ex=$ex.InnerException}
+    if($ex -and $ex.Response){$response=$ex.Response}else{return @{status=0;contentType='';bytes=New-Object byte[] 0}}
+  }
+  try{
+    $status=[int]$response.StatusCode
+    $ctype=[string]$response.ContentType
+    $ms=New-Object IO.MemoryStream
+    $src=$response.GetResponseStream()
+    if(-not $src){return @{status=$status;contentType=$ctype;bytes=New-Object byte[] 0}}
+    $buf=New-Object byte[] 8192
+    while(($n=$src.Read($buf,0,$buf.Length)) -gt 0){
+      if(($ms.Length+$n) -gt $MaxBytes){throw 'Fairlead sent more than expected.'}
+      $ms.Write($buf,0,$n)
+    }
+    return @{status=$status;contentType=$ctype;bytes=$ms.ToArray()}
+  }finally{if($response){$response.Close()}}
 }
