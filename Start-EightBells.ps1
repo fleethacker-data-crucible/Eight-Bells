@@ -605,8 +605,17 @@ $server=$null
 $instanceMutex=$null
 $instanceOwned=$false
 try{
-  # Mutex names keep the former LogHawk ID so an old LogHawk copy and Eight Bells cannot run at the same time.
-  $mutexName=if($testMode){'Local\LogHawk-v2-test-instance'}else{'Local\LogHawk-v2-single-instance'}
+  # Production keeps one Eight Bells per Windows session, under the former LogHawk mutex name, so an old
+  # LogHawk copy and Eight Bells still cannot run together. Test mode uses a different name for each
+  # server (EIGHTBELLS_TEST_INSTANCE, or a new id). A leftover test process on a shared runner, or the
+  # next server in the same test, must not take that production lock or block on the previous test server.
+  if($testMode){
+    $instanceId=Get-EnvSetting 'TEST_INSTANCE'
+    if($instanceId -notmatch '^[A-Za-z0-9-]{8,80}$'){$instanceId=[guid]::NewGuid().ToString('N')}
+    $mutexName='Local\EightBells-v2-test-'+$instanceId
+  }else{
+    $mutexName='Local\LogHawk-v2-single-instance'
+  }
   $instanceMutex=[System.Threading.Mutex]::new($false,$mutexName)
   # A server stopped with Stop-Process leaves the mutex abandoned; taking it over is expected.
   try{$instanceOwned=$instanceMutex.WaitOne(0)}

@@ -15,6 +15,8 @@ function Start-TestService([string]$Root,[string]$DataDir,[string]$Token,[hashta
   $port=Get-FreeLoopbackPort
   $saved=@{}
   $Env['EIGHTBELLS_TEST_SESSION']='1';$Env['EIGHTBELLS_TEST_DATA_DIR']=$DataDir
+  # One mutex per server, so this start is not blocked by another test server still exiting.
+  if(-not $Env.ContainsKey('EIGHTBELLS_TEST_INSTANCE')){$Env['EIGHTBELLS_TEST_INSTANCE']=[guid]::NewGuid().ToString('N')}
   foreach($k in $Env.Keys){$saved[$k]=[Environment]::GetEnvironmentVariable($k);[Environment]::SetEnvironmentVariable($k,[string]$Env[$k])}
   try{
     $source=Join-Path $Root 'Start-EightBells.ps1'
@@ -50,7 +52,12 @@ function Get-LlmRequests($fake){
   if(!(Test-Path $fake.Record)){return @()}
   return @(Get-Content -LiteralPath $fake.Record -Encoding UTF8|Where-Object {$_}|ForEach-Object {$_|ConvertFrom-Json})
 }
-function Stop-TestProcess($p){if($p -and $p.Process -and !$p.Process.HasExited){Stop-Process -Id $p.Process.Id -Force -ErrorAction SilentlyContinue}}
+function Stop-TestProcess($p){
+  if($p -and $p.Process -and !$p.Process.HasExited){
+    Stop-Process -Id $p.Process.Id -Force -ErrorAction SilentlyContinue
+    try{$null=$p.Process.WaitForExit(5000)}catch{}
+  }
+}
 function Assert-HttpStatus([scriptblock]$Call,[int]$Status,[string]$What){
   try{& $Call|Out-Null}catch{
     if($_.Exception.Response -and [int]$_.Exception.Response.StatusCode -eq $Status){return}
