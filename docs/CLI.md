@@ -70,10 +70,11 @@ These server routes have no command, and `tests/Cli-Test.ps1` fails if a new rou
 | --- | --- |
 | `GET /health`, `POST /api/heartbeat`, `POST /api/shutdown` | The lifecycle of a running server and its tab. Stop a server from the shell with `Stop-EightBells.ps1`. |
 | `GET /api/diagnostics` | Reads the running server's log lines. |
-| `GET /api/ai/router` | Status of the running server's router connection (is Fairlead answering, is this app's key installed); the CLI has no server. |
+| `GET /api/ai/router` | Status of the running server's router connection (is Fairlead answering, is this app's key installed, is Lazarette connected); the CLI has no server. The body never contains a key. |
 | `POST /api/ai/config`, `POST /api/ai/run`, `POST /api/vision` | Session-bound: the endpoint and key live only in the running server's memory, and every request needs consent in the page. |
+| `POST /api/voice/speech`, `POST /api/voice/transcriptions` | Session-bound: speech and dictation go through the running server's Fairlead connection. The CLI has no server and no microphone. |
 
-The browser-only features (voice, PDF reading, the JSON Lines / table / XML adapters, watch-profile rules, the Halyard export) are not in the CLI: they run in the page.
+PDF reading, the JSON Lines / table / XML adapters, watch-profile rules and the Halyard export are not in the CLI: they run in the page. Voice has server routes and is excluded above because it needs the running Fairlead connection.
 
 ## Writing while the app is open
 

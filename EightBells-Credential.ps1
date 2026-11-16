@@ -46,13 +46,56 @@ namespace EightBells {
 }
 # The app name Fairlead installs the key for. Fairlead's app names are letters, digits and hyphens.
 function Get-EightBellsFairleadTarget{ return 'Fairlead/EightBells' }
-# Returns the key text, or $null when none is installed. Tests may supply a key through EIGHTBELLS_TEST_FAIRLEAD_KEY, but only
-# in the isolated test service (the caller passes -AllowTestKey); the real Credential Manager is never touched by tests.
-function Get-EightBellsFairleadKey([switch]$AllowTestKey){
+# Fairlead's own local token (docs/API.md, "How a tool gets its Fairlead key"): the credential Fairlead/<App> if
+# present, otherwise the first line of %LOCALAPPDATA%\Fairlead\local-token. FAIRLEAD_LOCAL_TOKEN=off skips the file.
+# FAIRLEAD_LOCAL_TOKEN_FILE moves it. The file is never logged. A line that is empty, longer than 4 KB, or not
+# printable ASCII is ignored.
+function Get-EightBellsLocalTokenPath{
+  if([Environment]::GetEnvironmentVariable('FAIRLEAD_LOCAL_TOKEN') -eq 'off'){return $null}
+  $custom=[Environment]::GetEnvironmentVariable('FAIRLEAD_LOCAL_TOKEN_FILE')
+  if($custom){return $custom}
+  $base=$env:LOCALAPPDATA
+  if([string]::IsNullOrEmpty($base)){try{$base=[Environment]::GetFolderPath('LocalApplicationData')}catch{$base=$null}}
+  if([string]::IsNullOrEmpty($base)){return $null}
+  return (Join-Path (Join-Path $base 'Fairlead') 'local-token')
+}
+function Read-EightBellsLocalTokenFile([string]$Path){
+  try{
+    if([string]::IsNullOrWhiteSpace($Path) -or !(Test-Path -LiteralPath $Path -PathType Leaf)){return $null}
+    $info=New-Object IO.FileInfo $Path
+    if($info.Length -le 0 -or $info.Length -gt 4096){return $null}
+    $text=[IO.File]::ReadAllText($Path)
+    $line=($text -split "`r?`n",2)[0]
+    if($null -eq $line){return $null}
+    $line=$line.Trim().TrimStart([char]0xFEFF)
+    if($line.Length -lt 1){return $null}
+    foreach($ch in $line.ToCharArray()){if([int]$ch -lt 0x21 -or [int]$ch -gt 0x7E){return $null}}
+    return $line
+  }catch{return $null}
+}
+# Returns @{key; source} where source is credential-manager, local-token or none. The key is $null when source is none.
+# Tests may supply a key through EIGHTBELLS_TEST_FAIRLEAD_KEY, or a token file through EIGHTBELLS_TEST_LOCAL_TOKEN_FILE
+# when the key variable is (none). Both apply only when the caller passes -AllowTestKey, so tests never read this
+# account's Credential Manager or its real local-token file.
+function Get-EightBellsFairleadKeyInfo([switch]$AllowTestKey){
   if($AllowTestKey){
     $t=[Environment]::GetEnvironmentVariable('EIGHTBELLS_TEST_FAIRLEAD_KEY')
-    if($t -eq '(none)'){return $null}
-    if($t){return $t}
+    if($t -eq '(none)'){
+      $file=[Environment]::GetEnvironmentVariable('EIGHTBELLS_TEST_LOCAL_TOKEN_FILE')
+      if($file){$tok=Read-EightBellsLocalTokenFile $file;if($tok){return @{key=$tok;source='local-token'}}}
+      return @{key=$null;source='none'}
+    }
+    if($t){return @{key=$t;source='credential-manager'}}
   }
-  try{return [EightBells.CredReader]::Read((Get-EightBellsFairleadTarget))}catch{return $null}
+  $key=$null
+  try{$key=[EightBells.CredReader]::Read((Get-EightBellsFairleadTarget))}catch{$key=$null}
+  if($key){return @{key=$key;source='credential-manager'}}
+  # A test that did not set a key still must not open this account's local-token file.
+  if($AllowTestKey){return @{key=$null;source='none'}}
+  $path=Get-EightBellsLocalTokenPath
+  if($path){$tok=Read-EightBellsLocalTokenFile $path;if($tok){return @{key=$tok;source='local-token'}}}
+  return @{key=$null;source='none'}
+}
+function Get-EightBellsFairleadKey([switch]$AllowTestKey){
+  return (Get-EightBellsFairleadKeyInfo -AllowTestKey:$AllowTestKey).key
 }

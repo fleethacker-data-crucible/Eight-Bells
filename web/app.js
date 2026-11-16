@@ -205,7 +205,7 @@ function download(name,data,mime){
 }
 async function configureAI(clear){
  let data=clear?{endpoint:'',model:'',key:''}:{endpoint:el('endpoint').value.trim(),model:el('model').value.trim(),key:el('aiKey').value,useVault:el('aiVault').checked};
- await api('/api/ai/config',data);el('aiKey').value='';notify(clear?'AI configuration cleared.':'AI session provider configured.');
+ await api('/api/ai/config',data);el('aiKey').value='';notify(clear?'Back on the Fleet router.':'AI session provider configured.');
 }
 async function runAI(){
  syncTurnover();
@@ -227,7 +227,9 @@ async function refreshRouter(){
   const r=await api('/api/ai/router');
   el('routerAddr').textContent=r.url+(r.active?' (in use)':'');
   el('routerReach').textContent=r.reachable?'answering on this PC':'not answering. Start Fairlead.';
-  el('routerKey').textContent=r.keyInstalled?'installed':'not installed. In Fairlead choose Clients, Install for this app, name it EightBells.';
+  el('routerKey').textContent=r.keySource==='local-token'?"this account's Fairlead local token":(r.keyInstalled?'installed':'not installed. In Fairlead choose Clients, Install for this app, name it EightBells, or start Fairlead once so the local token exists.');
+  if(el('vaultStatus'))el('vaultStatus').textContent=(r.vault&&r.vault.message)||'Lazarette is not connected yet.';
+  if(el('vaultItem')&&r.vault&&r.vault.item)el('vaultItem').textContent=r.vault.item;
   if(r.active){el('routerLocal').checked=!!r.local;if(r.model)el('routerModel').value=r.model;}
  }catch(e){el('routerReach').textContent='unknown ('+e.message+')';}
 }
@@ -281,27 +283,84 @@ bind('exportBtn','click',safe(async()=>{if(!confirm('Export all local training r
 bind('aiConfig','click',safe(()=>configureAI(false)));bind('aiClear','click',safe(()=>configureAI(true)));
 bind('routerUse','click',safe(useRouter));bind('routerRefresh','click',safe(refreshRouter));
 bind('runAi','click',safe(runAI));bind('diagRefresh','click',safe(refreshDiagnostics));
-// Voice (web/voice.js): on-device speech only. voice.js loads after this file, so it is looked up when a button is pressed.
-let voice=null,dictation=null;
+// Voice: Fairlead /v1/audio/speech and /v1/audio/transcriptions first (TalkForge and Whisper through the router).
+// Windows on-device speech (web/voice.js) is the fallback. voice.js loads after this file, so it is looked up on click.
+let voice=null,dictation=null,spoken=null,clip=null;
 const getVoice=()=>voice||(voice=window.EightBellsVoice.create(window));
+function stopSpoken(){if(spoken){try{spoken.pause();spoken.removeAttribute('src');spoken.load();}catch(e){}spoken=null;}try{getVoice().stop();}catch(e){}}
+function appendDictation(t){const box=el('logText');box.value=(box.value?box.value.replace(/\s+$/,'')+'\n':'')+t;viewPreview();}
+function bytesToBase64(bytes){let bin='';const step=0x8000;for(let i=0;i<bytes.length;i+=step)bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+step));return btoa(bin);}
+function startDeviceDictation(){
+ const r=getVoice().dictate({consent:true,
+  onText:appendDictation,
+  onError:m=>notify(m,true),
+  onEnd:()=>{dictation=null;el('dictateBtn').disabled=false;el('dictateConsent').checked=false;}});
+ if(!r.ok)throw Error(r.message);
+ dictation=r;el('dictateBtn').disabled=true;
+}
 bind('readTurn','click',safe(async()=>{
  const text=el('turnText').textContent;
  if(/^Choose a log/.test(text))throw Error(window.EightBellsVoice.MESSAGES.nothing);
  notify('Reading the draft aloud…');
- const r=await getVoice().speak(text);
- if(!r.ok)throw Error(r.message);
+ stopSpoken();
+ try{
+  const r=await api('/api/voice/speech',{text:text,consent:true});
+  if(r&&r.audio){
+   const audio=new Audio('data:'+(r.mime||'audio/wav')+';base64,'+r.audio);
+   spoken=audio;
+   await audio.play();
+   notify('Finished reading.');
+   return;
+  }
+ }catch(e){}
+ const local=await getVoice().speak(text);
+ if(!local.ok)throw Error(local.message);
  notify('Finished reading.');
 }));
-bind('stopTurn','click',()=>{getVoice().stop();notify('Stopped.');});
+bind('stopTurn','click',()=>{stopSpoken();notify('Stopped.');});
 bind('dictateBtn','click',safe(async()=>{
- const r=getVoice().dictate({consent:el('dictateConsent').checked,
-  onText:t=>{const box=el('logText');box.value=(box.value?box.value.replace(/\s+$/,'')+'\n':'')+t;viewPreview();},
-  onError:m=>notify(m,true),
-  onEnd:()=>{dictation=null;el('dictateBtn').disabled=false;el('dictateConsent').checked=false;}});
- if(!r.ok)throw Error(r.message);
- dictation=r;el('dictateBtn').disabled=true;notify('Listening on this device. Say each entry, then check the text before importing.');
+ if(el('dictateConsent').checked!==true)throw Error(window.EightBellsVoice.MESSAGES.needConsent);
+ if(navigator.mediaDevices&&window.MediaRecorder){
+  try{
+   const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+   const rec=new MediaRecorder(stream);const chunks=[];
+   rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data);};
+   const done=new Promise(resolve=>{rec.onstop=()=>resolve();});
+   rec.start();
+   clip={rec:rec,stream:stream,chunks:chunks,done:done,mime:rec.mimeType||'audio/webm'};
+   dictation={stop:function(){try{rec.stop();}catch(e){}}};
+   el('dictateBtn').disabled=true;
+   notify('Listening. Stop to send this clip through Fairlead. Check the text before importing.');
+   return;
+  }catch(e){}
+ }
+ startDeviceDictation();
+ notify('Listening on this device. Say each entry, then check the text before importing.');
 }));
-bind('dictateStop','click',()=>{if(dictation)dictation.stop();});
+bind('dictateStop','click',safe(async()=>{
+ if(clip){
+  const c=clip;clip=null;dictation=null;
+  try{c.rec.stop();}catch(e){}
+  await c.done;
+  c.stream.getTracks().forEach(t=>{try{t.stop();}catch(e){}});
+  el('dictateBtn').disabled=false;
+  const blob=new Blob(c.chunks,{type:c.mime||'audio/webm'});
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  if(!bytes.length){el('dictateConsent').checked=false;throw Error('No speech was heard.');}
+  try{
+   const r=await api('/api/voice/transcriptions',{consent:true,mime:blob.type||'audio/webm',base64:bytesToBase64(bytes)});
+   if(r&&r.text)appendDictation(r.text);
+   el('dictateConsent').checked=false;
+   notify('Dictation added from Fairlead. It is unverified until you check it.');
+   return;
+  }catch(e){
+   notify(e.message+' On-device recognition is on instead.',true);
+   startDeviceDictation();
+   return;
+  }
+ }
+ if(dictation)dictation.stop();
+}));
 // The open tab owns the server: it stops itself shortly after the last tab closes (see lifecycle.js).
 let stopHeartbeat=function(){};
 async function endSession(){
