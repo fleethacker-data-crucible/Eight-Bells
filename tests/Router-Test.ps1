@@ -4,7 +4,7 @@ param([string]$Root=(Split-Path -Parent $PSScriptRoot))
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 $sandbox=New-TestSandbox
-$svc=$null;$fake=$null;$other=$null;$deny=$null;$nokey=$null;$over=$null;$tok=$null
+$svc=$null;$fake=$null;$other=$null;$deny=$null;$nokey=$null;$over=$null;$tok=$null;$imp=$null;$impSvc=$null;$red=$null;$redSvc=$null;$named=$null
 try{
   $fake=Start-FakeLlm $Root $sandbox 'ok'
   $svc=Start-TestService $Root $sandbox 'synthetic-router-test-token-321' @{EIGHTBELLS_FAIRLEAD_URL=$fake.Endpoint;EIGHTBELLS_TEST_FAIRLEAD_KEY='synthetic-fairlead-key-1'}
@@ -28,11 +28,13 @@ try{
   $run=Post-Json $svc '/api/ai/run' @{logId=$log.id;consent=$true}
   Assert-True ($run.verified -eq $false) 'Router output must be marked unverified'
   $seen=@(Get-LlmRequests $fake)
-  Assert-True ($seen.Count -eq 1) 'Exactly one upstream call per consented router request'
-  Assert-True ($seen[0].path -eq '/v1/chat/completions') 'Router requests go to the chat completions path'
-  Assert-True ($seen[0].privacy -eq 'local') 'Router requests must carry the local-only privacy header'
-  Assert-True ($seen[0].auth -eq 'Bearer synthetic-fairlead-key-1') 'Router mode sends this app''s own Fairlead key, never a provider key'
-  Assert-True ($seen[0].body.model -eq 'auto') 'Router requests use the router model name'
+  $calls=@($seen|Where-Object {$_.path -eq '/v1/chat/completions'})
+  $id=@($seen|Where-Object {$_.path -eq '/__fleethacker/id'})
+  Assert-True ($calls.Count -eq 1) 'Exactly one chat call per consented router request'
+  Assert-True ($id.Count -ge 1 -and $id[0].auth -eq '') 'The identity check is made with no key'
+  Assert-True ($calls[0].privacy -eq 'local') 'Router requests must carry the local-only privacy header'
+  Assert-True ($calls[0].auth -eq 'Bearer synthetic-fairlead-key-1') 'Router mode sends this app''s own Fairlead key, never a provider key'
+  Assert-True ($calls[0].body.model -eq 'auto') 'Router requests use the router model name'
   Write-Host 'PASS: router requests need consent, carry the app Fairlead key and are sent local-only by default'
 
   # ---- the page can allow cloud models for synthetic data: only an explicit false removes the local-only header ----
@@ -77,7 +79,8 @@ try{
   Assert-True ($msg -match 'Install for this app' -and $msg -match 'EightBells') 'A refused router call must say how to install the key'
   Assert-True ($msg -notmatch 'synthetic key refused') 'The upstream error text must not be echoed'
   $seen=@(Get-LlmRequests $deny)
-  Assert-True ($seen.Count -eq 1 -and $seen[0].auth -eq '') 'Without an installed key no Authorization header is sent'
+  $calls=@($seen|Where-Object {$_.path -eq '/v1/chat/completions'})
+  Assert-True ($calls.Count -eq 1 -and $calls[0].auth -eq '' -and -not @($seen|Where-Object {$_.auth -match 'Bearer'})) 'Without an installed key no Authorization header is sent'
   Write-Host 'PASS: no installed key sends no header, and a refusal explains how to install one'
 
   # ---- a manual endpoint override replaces the router; the app-specific name beats LLM_URL ----
@@ -105,8 +108,40 @@ try{
   $seen=@(Get-LlmRequests $fake)
   Assert-True ($seen[$seen.Count-1].auth -eq 'Bearer synthetic-local-token-1' -and $seen[$seen.Count-1].label -eq 'EightBells') 'Router mode sends the local token and the app label'
   Write-Host 'PASS: local token is used when no credential is installed'
+
+  # ---- an impostor on the port does not receive the key ----
+  $imp=Start-FakeLlm $Root $sandbox 'impostor'
+  $impSvc=Start-TestService $Root $sandbox 'synthetic-router-test-token-326' @{EIGHTBELLS_FAIRLEAD_URL=$imp.Endpoint;EIGHTBELLS_TEST_FAIRLEAD_KEY='synthetic-fairlead-key-1'}
+  $log5=Post-Json $impSvc '/api/import' @{name='Synthetic impostor log';watch='Engineering';content='0800 Synthetic entry';format='text';entries=@(@{line=1;time='08:00';text='Synthetic entry';issue=$false;resolution=$false});analysis=@{score=100;findings=@();open=@()}}
+  $msg=''
+  try{Post-Json $impSvc '/api/ai/run' @{logId=$log5.id;consent=$true}|Out-Null}catch{$msg=[string]$_.ErrorDetails.Message}
+  Assert-True ($msg -match 'key was not sent' -and $msg -match 'not Fairlead') 'An impostor is refused before the key is sent'
+  Assert-True ($msg -notmatch 'synthetic-fairlead-key') 'The refusal must not contain the key'
+  $seen=@(Get-LlmRequests $imp)
+  Assert-True (-not @($seen|Where-Object {$_.auth -match 'Bearer'})) 'No request to the impostor carries the key'
+  Assert-True (@($seen|Where-Object {$_.path -eq '/__fleethacker/id' -and $_.auth -eq ''}).Count -ge 1) 'The identity request is unauthenticated'
+  Write-Host 'PASS: the key is not sent unless the listener identifies itself as Fairlead'
+
+  # ---- a redirect is not followed ----
+  $red=Start-FakeLlm $Root $sandbox 'redirect'
+  $redSvc=Start-TestService $Root $sandbox 'synthetic-router-test-token-327' @{EIGHTBELLS_FAIRLEAD_URL=$red.Endpoint;EIGHTBELLS_TEST_FAIRLEAD_KEY='synthetic-fairlead-key-1'}
+  $log6=Post-Json $redSvc '/api/import' @{name='Synthetic redirect log';watch='Engineering';content='0800 Synthetic entry';format='text';entries=@(@{line=1;time='08:00';text='Synthetic entry';issue=$false;resolution=$false});analysis=@{score=100;findings=@();open=@()}}
+  $msg=''
+  try{Post-Json $redSvc '/api/ai/run' @{logId=$log6.id;consent=$true}|Out-Null}catch{$msg=[string]$_.ErrorDetails.Message}
+  Assert-True ($msg -match 'not followed') 'A Fairlead redirect is a failure'
+  $chat=@($(Get-LlmRequests $red)|Where-Object {$_.path -eq '/v1/chat/completions'})
+  Assert-True ($chat.Count -eq 1 -and $chat[0].auth -eq 'Bearer synthetic-fairlead-key-1') 'The key goes to the identified listener once and the redirect is not requested'
+  Write-Host 'PASS: router calls do not follow redirects'
+
+  # ---- localhost is not a router address ----
+  $named=Start-TestService $Root $sandbox 'synthetic-router-test-token-328' @{EIGHTBELLS_FAIRLEAD_URL='http://localhost:8776/v1/chat/completions';EIGHTBELLS_TEST_FAIRLEAD_KEY='synthetic-fairlead-key-1'}
+  $st=Invoke-RestMethod -Uri ($named.Url+'/api/ai/router') -Headers $named.Headers
+  Assert-True ($st.active -eq $false) 'A localhost router address is not used'
+  Assert-HttpStatus {Post-Json $named '/api/ai/config' @{router=$true}} 400 'localhost is refused as the router address'
+  Write-Host 'PASS: the router address must be the literal 127.0.0.1'
 }finally{
   Stop-TestProcess $svc;Stop-TestProcess $fake;Stop-TestProcess $other;Stop-TestProcess $deny;Stop-TestProcess $nokey;Stop-TestProcess $over;Stop-TestProcess $tok
+  Stop-TestProcess $imp;Stop-TestProcess $impSvc;Stop-TestProcess $red;Stop-TestProcess $redSvc;Stop-TestProcess $named
   Start-Sleep -Milliseconds 300
   Remove-Item -LiteralPath $sandbox -Recurse -Force -ErrorAction SilentlyContinue
 }

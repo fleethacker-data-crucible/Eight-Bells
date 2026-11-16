@@ -18,16 +18,19 @@ try{
   Assert-True ([Text.Encoding]::ASCII.GetString([Convert]::FromBase64String([string]$spoken.audio)) -eq 'RIFF') 'Speech returns the upstream audio bytes'
   Assert-True (-not (($spoken|ConvertTo-Json).Contains('synthetic-fairlead-key'))) 'Speech response must not contain the client key'
   $seen=@(Get-LlmRequests $fake)
-  Assert-True ($seen.Count -eq 1 -and $seen[0].path -eq '/v1/audio/speech') 'Speech posts to Fairlead /v1/audio/speech'
-  Assert-True ($seen[0].privacy -eq 'local' -and $seen[0].label -eq 'EightBells' -and $seen[0].auth -eq 'Bearer synthetic-fairlead-key-1') 'Speech is local-only and carries this app''s Fairlead key'
-  Assert-True ($seen[0].body.model -eq 'auto' -and $seen[0].body.input -eq 'Line 1 synthetic turnover') 'Speech sends the draft text and lets Fairlead choose the model'
+  $speech=@($seen|Where-Object {$_.path -eq '/v1/audio/speech'})
+  $id=@($seen|Where-Object {$_.path -eq '/__fleethacker/id'})
+  Assert-True ($speech.Count -eq 1) 'Speech posts to Fairlead /v1/audio/speech'
+  Assert-True ($id.Count -ge 1 -and $id[0].auth -eq '') 'Speech checks Fairlead identity with no key'
+  Assert-True ($speech[0].privacy -eq 'local' -and $speech[0].label -eq 'EightBells' -and $speech[0].auth -eq 'Bearer synthetic-fairlead-key-1') 'Speech is local-only and carries this app''s Fairlead key'
+  Assert-True ($speech[0].body.model -eq 'auto' -and $speech[0].body.input -eq 'Line 1 synthetic turnover') 'Speech sends the draft text and lets Fairlead choose the model'
 
   $clip=[Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes('RIFF'))
   $heard=Post-Json $svc '/api/voice/transcriptions' @{mime='audio/webm;codecs=opus';base64=$clip;consent=$true}
   Assert-True ($heard.text -eq 'synthetic dictated line' -and $heard.verified -eq $false) 'Transcription is unverified text from Fairlead'
   Assert-True (-not (($heard|ConvertTo-Json).Contains('synthetic-fairlead-key'))) 'Transcription response must not contain the client key'
-  $seen=@(Get-LlmRequests $fake)
-  Assert-True ($seen.Count -eq 2 -and $seen[1].path -eq '/v1/audio/transcriptions' -and $seen[1].privacy -eq 'local' -and $seen[1].auth -eq 'Bearer synthetic-fairlead-key-1') 'Transcription posts local-only to Fairlead /v1/audio/transcriptions'
+  $heardReqs=@($(Get-LlmRequests $fake)|Where-Object {$_.path -eq '/v1/audio/transcriptions'})
+  Assert-True ($heardReqs.Count -eq 1 -and $heardReqs[0].privacy -eq 'local' -and $heardReqs[0].auth -eq 'Bearer synthetic-fairlead-key-1') 'Transcription posts local-only to Fairlead /v1/audio/transcriptions'
   Write-Host 'PASS: speech and transcription go through Fairlead, local-only, with consent, and never return the key'
 
   Stop-TestProcess $svc;$svc=$null

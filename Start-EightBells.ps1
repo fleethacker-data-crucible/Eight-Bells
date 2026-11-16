@@ -134,6 +134,7 @@ $script:startedAt=[DateTime]::UtcNow
 # unless that switch is set, so a developer machine's vault is never read by the tests.
 . (Join-Path $root 'EightBells-Vault.ps1')
 . (Join-Path $root 'EightBells-Credential.ps1')
+. (Join-Path $root 'EightBells-Fairlead.ps1')
 $script:vaultKey=''
 $script:vaultItem=Get-EnvSetting 'LAZARETTE_ITEM_AI'
 if([string]::IsNullOrEmpty($script:vaultItem)){$script:vaultItem='ai-api-key'}
@@ -196,7 +197,8 @@ function Test-EightBellsRouterUrl([string]$url){
   $uri=$null
   if(![Uri]::TryCreate($url,[UriKind]::Absolute,[ref]$uri)){return $false}
   if($uri.UserInfo){return $false}
-  return ($uri.Scheme -eq 'http' -and ($uri.Host -in @('127.0.0.1','localhost')))
+  # localhost is refused: name resolution must not move the router off this machine.
+  return ($uri.Scheme -eq 'http' -and $uri.Host -eq '127.0.0.1')
 }
 function Test-EightBellsManualUrl([string]$url){
   $uri=$null
@@ -247,14 +249,31 @@ function Get-EightBellsFairleadHeaders([bool]$Local){
   if($Local){$h['X-Fairlead-Privacy']='local'}
   return $h
 }
-# Headers for a model call. Manual mode: the typed or vault key. Router mode: the Fairlead client key.
+# Headers for a manual model call. Router calls use Invoke-EightBellsRouterRequest, which checks that the
+# listener is Fairlead before the client key is attached. This function never adds that key.
 function Get-EightBellsModelHeaders{
-  if($script:ai.router){return (Get-EightBellsFairleadHeaders ([bool]$script:ai.local))}
   $h=@{}
-  if($script:ai.key){$h['Authorization']='Bearer '+$script:ai.key}
+  if($script:ai.key -and -not $script:ai.router){$h['Authorization']='Bearer '+$script:ai.key}
   return $h
 }
+# Why a Fairlead HTTP status is not a usable answer. 3xx is a failure: the request is not followed, so the key stays on the first host.
+function Get-EightBellsRouterFailure([int]$Status,[string]$What){
+  if($Status -ge 300 -and $Status -lt 400){return 'Fairlead redirected the request, so it was not followed.'}
+  if($Status -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.'}
+  if($Status -eq 0){return 'Fairlead did not answer on this PC. Start Fairlead, then try again.'}
+  return $What+' failed through Fairlead (HTTP '+$Status+'). Check the Fairlead request log.'
+}
+# Identity check first. The key is attached only when that returns nothing. No proxy and no redirect.
+function Invoke-EightBellsRouterRequest([string]$Url,[byte[]]$Body,[string]$ContentType,[bool]$Local,[int]$MaxBytes){
+  $why=Test-EightBellsFairleadIdentity -Url $script:routerUrl
+  if($why){return @{ok=$false;status=0;bytes=(New-Object byte[] 0);contentType='';message=$why}}
+  $posted=Invoke-EightBellsFairleadPost $Url $Body $ContentType (Get-EightBellsFairleadHeaders $Local) $MaxBytes
+  $msg=''
+  if($posted.status -ne 200){$msg=Get-EightBellsRouterFailure $posted.status 'The request'}
+  return @{ok=($posted.status -eq 200);status=$posted.status;bytes=$posted.bytes;contentType=[string]$posted.contentType;message=$msg}
+}
 # One POST to a loopback Fairlead route. The body is not logged. status 0 means Fairlead did not answer.
+# Proxy is off and redirects are not followed, so a 3xx cannot carry the key anywhere else.
 function Invoke-EightBellsFairleadPost([string]$Url,[byte[]]$Body,[string]$ContentType,[hashtable]$Headers,[int]$MaxBytes){
   $request=[Net.HttpWebRequest]::Create($Url)
   $request.Method='POST'
@@ -292,17 +311,6 @@ function Invoke-EightBellsFairleadPost([string]$Url,[byte[]]$Body,[string]$Conte
     }
     return @{status=$status;contentType=$ctype;bytes=$ms.ToArray()}
   }finally{if($response){$response.Close()}}
-}
-# Plain-language reason for a failed model call. Never includes a key or any log text.
-function Get-EightBellsModelFailure($err,[string]$what){
-  $code=0;try{if($err.Exception.Response){$code=[int]$err.Exception.Response.StatusCode}}catch{}
-  if($script:ai.router){
-    if($code -in 401,403){return 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.'}
-    if($code -eq 0){return 'Fairlead did not answer on this PC. Start Fairlead, then try again.'}
-    if($script:ai.local){return $what+' failed through Fairlead. With local-only on, Fairlead needs a local model; switch local-only off for synthetic data to use a cloud model.'}
-    return $what+' failed through Fairlead (HTTP '+$code+'). Check the Fairlead request log.'
-  }
-  return $what+' failed; inspect endpoint and model settings'
 }
 function Reply($stream,[int]$status,[string]$body,[string]$mime='application/json; charset=utf-8'){ReplyBytes $stream $status ([Text.Encoding]::UTF8.GetBytes($body)) $mime}
 function ReplyBytes($stream,[int]$status,[byte[]]$data,[string]$mime){
@@ -481,6 +489,17 @@ function Process-Http($req,$stream){
     $url='data:'+$mime+';base64,'+$encoded
     $message=@{role='user';content=@(@{type='text';text='Transcribe this SYNTHETIC TRAINING watch log exactly, preserving line order and timestamps. Do not invent or normalize illegible words. Mark them [ILLEGIBLE]. Output ONLY the transcription.'},@{type='image_url';image_url=@{url=$url}})}
     $body=J @{model=$script:ai.model;messages=@($message);temperature=0.0;max_tokens=3000}
+    if($script:ai.router){
+      $call=Invoke-EightBellsRouterRequest -Url $script:ai.endpoint -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json' -Local:([bool]$script:ai.local) -MaxBytes 2000000
+      if($call.message){Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 $call.message;return}
+      try{
+        $result=[Text.Encoding]::UTF8.GetString($call.bytes)|ConvertFrom-Json
+        $transcript=[string]$result.choices[0].message.content
+        if(!$transcript){throw 'No recognized transcription'}
+      }catch{Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 (Get-EightBellsRouterFailure 0 'Vision transcription');return}
+      Diag 'Synthetic-image vision transcription completed through Fairlead; no content logged'
+      Reply $stream 200 (J @{text=$transcript;verified=$false});return
+    }
     $headers=Get-EightBellsModelHeaders
     try{
       $result=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
@@ -488,7 +507,7 @@ function Process-Http($req,$stream){
       if(!$transcript){throw 'No recognized transcription'}
       Diag 'Manual synthetic-image vision transcription completed; no content logged'
       Reply $stream 200 (J @{text=$transcript;verified=$false});return
-    }catch{Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 $(if($script:ai.router){Get-EightBellsModelFailure $_ 'Vision transcription'}else{'Vision transcription failed; verify endpoint vision support and configuration'});return}
+    }catch{Diag 'Vision request failed (credentials and image excluded)';Reject $stream 500 'Vision transcription failed; verify endpoint vision support and configuration';return}
   }
   if($path -eq '/api/ai/run'){
     if(!$script:ai.endpoint){Reject $stream 400 'Configure an approved AI endpoint';return}
@@ -498,6 +517,17 @@ function Process-Http($req,$stream){
     $lines=@($item[0].entries|Select-Object -First 150|ForEach-Object {'Line '+$_.line+': '+$_.text})
     $prompt="SYNTHETIC TRAINING LOG. Draft watch turnover, cite line numbers, do not invent resolutions. SOURCE:"+[Environment]::NewLine+($lines -join [Environment]::NewLine)
     $body=J @{model=$script:ai.model;temperature=0.1;messages=@(@{role='system';content='Create a cautious evidence-linked turnover draft, plain text.'},@{role='user';content=$prompt})}
+    if($script:ai.router){
+      $call=Invoke-EightBellsRouterRequest -Url $script:ai.endpoint -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json' -Local:([bool]$script:ai.local) -MaxBytes 2000000
+      if($call.message){Diag 'AI request failed (no credentials logged)';Reject $stream 500 $call.message;return}
+      try{
+        $response=[Text.Encoding]::UTF8.GetString($call.bytes)|ConvertFrom-Json
+        $answer=[string]$response.choices[0].message.content
+        if(!$answer){throw 'Empty response'}
+      }catch{Diag 'AI request failed (no credentials logged)';Reject $stream 500 (Get-EightBellsRouterFailure 0 'AI request');return}
+      Diag 'AI request succeeded through Fairlead (no content logged)'
+      Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
+    }
     $headers=Get-EightBellsModelHeaders
     try{
       $response=Invoke-RestMethod -Uri $script:ai.endpoint -Method Post -Headers $headers -ContentType 'application/json' -Body $body -TimeoutSec 90
@@ -505,7 +535,7 @@ function Process-Http($req,$stream){
       if(!$answer){throw 'Empty response'}
       Diag 'Manual AI request succeeded (no content logged)'
       Reply $stream 200 (J @{text=$answer;model=$script:ai.model;verified=$false});return
-    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 (Get-EightBellsModelFailure $_ 'AI request');return}
+    }catch{Diag 'Manual AI request failed (no credentials logged)';Reject $stream 500 'AI request failed; inspect endpoint and model settings';return}
   }
   if($path -eq '/api/voice/speech'){
     # TalkForge through Fairlead /v1/audio/speech. Same client key as chat. Always local-only: a turnover
@@ -521,12 +551,9 @@ function Process-Http($req,$stream){
     $payload=[ordered]@{model='auto';input=$said;response_format='wav'}
     if($voiceName){$payload.voice=$voiceName}
     $raw=[Text.Encoding]::UTF8.GetBytes((ConvertTo-Json -InputObject $payload -Compress))
-    try{
-      $spoke=Invoke-EightBellsFairleadPost (Get-EightBellsAudioUrl 'speech') $raw 'application/json; charset=utf-8' (Get-EightBellsFairleadHeaders $true) 2000000
-    }catch{Diag 'Voice speech failed (no text logged)';Reject $stream 502 'Fairlead could not read this aloud.';return}
-    if($spoke.status -eq 0){Diag 'Voice speech: Fairlead did not answer';Reject $stream 503 'Fairlead did not answer on this PC. Start Fairlead, then try again.';return}
-    if($spoke.status -in 401,403){Diag 'Voice speech refused';Reject $stream 502 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.';return}
-    if($spoke.status -ne 200 -or [string]$spoke.contentType -notmatch '^audio/'){Diag ('Voice speech failed (HTTP '+$spoke.status+')');Reject $stream 502 'Fairlead did not return audio. With local-only on, Fairlead needs a local speech model.';return}
+    $spoke=Invoke-EightBellsRouterRequest (Get-EightBellsAudioUrl 'speech') $raw 'application/json; charset=utf-8' $true 2000000
+    if($spoke.message){Diag 'Voice speech failed (no text logged)';Reject $stream 502 $spoke.message;return}
+    if([string]$spoke.contentType -notmatch '^audio/'){Diag 'Voice speech failed (not audio)';Reject $stream 502 'Fairlead did not return audio. With local-only on, Fairlead needs a local speech model.';return}
     Diag 'Voice speech completed (no text logged)'
     Reply $stream 200 (J @{audio=[Convert]::ToBase64String($spoke.bytes);mime='audio/wav';verified=$false;via='fairlead'});return
   }
@@ -549,13 +576,10 @@ function Process-Http($req,$stream){
     [System.Buffer]::BlockCopy($pre,0,$form,0,$pre.Length)
     [System.Buffer]::BlockCopy($audio,0,$form,$pre.Length,$audio.Length)
     [System.Buffer]::BlockCopy($post,0,$form,($pre.Length+$audio.Length),$post.Length)
-    try{
-      $heard=Invoke-EightBellsFairleadPost (Get-EightBellsAudioUrl 'transcriptions') $form ('multipart/form-data; boundary='+$boundary) (Get-EightBellsFairleadHeaders $true) 1000000
-    }catch{Diag 'Voice transcription failed (no audio logged)';Reject $stream 502 'Fairlead could not transcribe this clip.';return}
-    if($heard.status -eq 0){Diag 'Voice transcription: Fairlead did not answer';Reject $stream 503 'Fairlead did not answer on this PC. Start Fairlead, then try again.';return}
-    if($heard.status -in 401,403){Diag 'Voice transcription refused';Reject $stream 502 'Fairlead refused the request. In Fairlead open Clients, choose Install for this app and name it EightBells, or start Fairlead once so this account''s local token exists, then try again.';return}
+    $heard=Invoke-EightBellsRouterRequest (Get-EightBellsAudioUrl 'transcriptions') $form ('multipart/form-data; boundary='+$boundary) $true 1000000
+    if($heard.message){Diag 'Voice transcription failed (no audio logged)';Reject $stream 502 $heard.message;return}
     $transcript=''
-    if($heard.status -eq 200){try{$transcript=[string](([Text.Encoding]::UTF8.GetString($heard.bytes))|ConvertFrom-Json).text}catch{$transcript=''}}
+    try{$transcript=[string](([Text.Encoding]::UTF8.GetString($heard.bytes))|ConvertFrom-Json).text}catch{$transcript=''}
     if(!$transcript){Diag ('Voice transcription failed (HTTP '+$heard.status+')');Reject $stream 502 'Fairlead returned no transcription. With local-only on, Fairlead needs a local transcription model.';return}
     Diag 'Voice transcription completed (no text logged)'
     Reply $stream 200 (J @{text=$transcript;verified=$false;via='fairlead'});return
